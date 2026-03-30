@@ -1,28 +1,41 @@
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, MapPin } from 'lucide-react';
-import { ROOMS, RoomType } from '@/lib/types';
-import { getVenuesForRoom } from '@/lib/mockData';
-import { VenueCard } from '@/components/VenueCard';
+import { ArrowLeft, MapPin, Users } from 'lucide-react';
+import { ROOMS } from '@/lib/types';
 import { useHanginnStore } from '@/lib/hanginnStore';
+import { VenueCard } from '@/components/VenueCard';
+import type { Tables } from '@/integrations/supabase/types';
 
 const RoomVenues = () => {
   const { roomType } = useParams<{ roomType: string }>();
   const navigate = useNavigate();
-  const setSelectedVenue = useHanginnStore((s) => s.setSelectedVenue);
+  const { fetchVenues, fetchVenueSessionCount } = useHanginnStore();
   const room = ROOMS.find((r) => r.type === roomType);
+
+  const [venues, setVenues] = useState<(Tables<'venues'> & { peopleCount: number })[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!roomType) return;
+    const load = async () => {
+      const v = await fetchVenues(roomType);
+      const withCounts = await Promise.all(
+        v.map(async (venue) => {
+          const count = await fetchVenueSessionCount(venue.id);
+          return { ...venue, peopleCount: count };
+        })
+      );
+      setVenues(withCounts);
+      setLoading(false);
+    };
+    load();
+  }, [roomType]);
 
   if (!room) {
     navigate('/');
     return null;
   }
-
-  const venues = getVenuesForRoom(roomType as RoomType);
-
-  const handleSelect = (venueId: string) => {
-    setSelectedVenue(venueId);
-    navigate(`/rooms/${roomType}/join`);
-  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -48,18 +61,37 @@ const RoomVenues = () => {
           <span>Showing venues near you</span>
         </motion.div>
 
-        <div className="flex flex-col gap-3">
-          {venues.map((venue, i) => (
-            <motion.div
-              key={venue.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.08 }}
-            >
-              <VenueCard venue={venue} onClick={() => handleSelect(venue.id)} />
-            </motion.div>
-          ))}
-        </div>
+        {loading ? (
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-24 rounded-2xl bg-secondary animate-pulse" />
+            ))}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {venues.map((venue, i) => (
+              <motion.div
+                key={venue.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.08 }}
+              >
+                <VenueCard
+                  venue={{
+                    id: venue.id,
+                    name: venue.name,
+                    image: venue.image_url || '',
+                    peopleCount: venue.peopleCount,
+                    topRhythms: ['Open to chat'],
+                    roomType: venue.room_type as any,
+                    address: venue.address,
+                  }}
+                  onClick={() => navigate(`/rooms/${roomType}/join?venue=${venue.id}`)}
+                />
+              </motion.div>
+            ))}
+          </div>
+        )}
       </main>
     </div>
   );

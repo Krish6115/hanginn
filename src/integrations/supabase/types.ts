@@ -14,7 +14,230 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      circles: {
+        Row: {
+          connected_profile_id: string
+          created_at: string
+          id: string
+          profile_id: string
+          venue_id: string
+        }
+        Insert: {
+          connected_profile_id: string
+          created_at?: string
+          id?: string
+          profile_id: string
+          venue_id: string
+        }
+        Update: {
+          connected_profile_id?: string
+          created_at?: string
+          id?: string
+          profile_id?: string
+          venue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "circles_connected_profile_id_fkey"
+            columns: ["connected_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "circles_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "circles_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      connection_requests: {
+        Row: {
+          created_at: string
+          icebreaker: string | null
+          id: string
+          receiver_anchor: string | null
+          receiver_id: string
+          sender_anchor: string | null
+          sender_id: string
+          status: string
+          updated_at: string
+          venue_id: string
+        }
+        Insert: {
+          created_at?: string
+          icebreaker?: string | null
+          id?: string
+          receiver_anchor?: string | null
+          receiver_id: string
+          sender_anchor?: string | null
+          sender_id: string
+          status?: string
+          updated_at?: string
+          venue_id: string
+        }
+        Update: {
+          created_at?: string
+          icebreaker?: string | null
+          id?: string
+          receiver_anchor?: string | null
+          receiver_id?: string
+          sender_anchor?: string | null
+          sender_id?: string
+          status?: string
+          updated_at?: string
+          venue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "connection_requests_receiver_id_fkey"
+            columns: ["receiver_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "connection_requests_sender_id_fkey"
+            columns: ["sender_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "connection_requests_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          age_band: string
+          created_at: string
+          gender_preference: string
+          hometown: string
+          id: string
+          nickname: string
+          phone: string
+          photo_url: string | null
+          profession: string
+          updated_at: string
+        }
+        Insert: {
+          age_band: string
+          created_at?: string
+          gender_preference?: string
+          hometown: string
+          id?: string
+          nickname: string
+          phone: string
+          photo_url?: string | null
+          profession: string
+          updated_at?: string
+        }
+        Update: {
+          age_band?: string
+          created_at?: string
+          gender_preference?: string
+          hometown?: string
+          id?: string
+          nickname?: string
+          phone?: string
+          photo_url?: string | null
+          profession?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      room_sessions: {
+        Row: {
+          id: string
+          is_active: boolean
+          joined_at: string
+          profile_id: string
+          rhythm: string | null
+          room_type: string
+          snoozed: boolean
+          updated_at: string
+          venue_id: string
+        }
+        Insert: {
+          id?: string
+          is_active?: boolean
+          joined_at?: string
+          profile_id: string
+          rhythm?: string | null
+          room_type: string
+          snoozed?: boolean
+          updated_at?: string
+          venue_id: string
+        }
+        Update: {
+          id?: string
+          is_active?: boolean
+          joined_at?: string
+          profile_id?: string
+          rhythm?: string | null
+          room_type?: string
+          snoozed?: boolean
+          updated_at?: string
+          venue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "room_sessions_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "room_sessions_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      venues: {
+        Row: {
+          address: string
+          created_at: string
+          id: string
+          image_url: string | null
+          name: string
+          room_type: string
+        }
+        Insert: {
+          address: string
+          created_at?: string
+          id?: string
+          image_url?: string | null
+          name: string
+          room_type: string
+        }
+        Update: {
+          address?: string
+          created_at?: string
+          id?: string
+          image_url?: string | null
+          name?: string
+          room_type?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
