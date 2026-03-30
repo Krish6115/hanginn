@@ -1,11 +1,39 @@
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft, MapPin, Briefcase } from 'lucide-react';
-import { getCircle } from '@/lib/mockData';
+import { useHanginnStore } from '@/lib/hanginnStore';
+
+interface CircleEntry {
+  id: string;
+  created_at: string;
+  connected_profile: {
+    nickname: string;
+    photo_url: string | null;
+    hometown: string;
+    profession: string;
+  };
+  venue: {
+    name: string;
+  };
+}
 
 const MyCircle = () => {
   const navigate = useNavigate();
-  const circle = getCircle();
+  const { currentProfile, fetchCircle } = useHanginnStore();
+  const [circle, setCircle] = useState<CircleEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!currentProfile) {
+      setLoading(false);
+      return;
+    }
+    fetchCircle(currentProfile.id).then((data) => {
+      setCircle(data as any);
+      setLoading(false);
+    });
+  }, [currentProfile]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -19,39 +47,41 @@ const MyCircle = () => {
       </header>
 
       <main className="max-w-lg mx-auto px-6 py-6">
-        {circle.length === 0 ? (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="text-center py-20"
-          >
+        {loading ? (
+          <div className="space-y-3">
+            {[1, 2].map((i) => <div key={i} className="h-20 rounded-2xl bg-secondary animate-pulse" />)}
+          </div>
+        ) : circle.length === 0 ? (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-20">
             <p className="text-4xl mb-4">🤝</p>
-            <p className="text-muted-foreground font-body">No connections yet. Enter a room to start meeting people!</p>
+            <p className="text-muted-foreground font-body">
+              {currentProfile ? 'No connections yet. Enter a room to start meeting people!' : 'Enter a room first to start building your circle.'}
+            </p>
           </motion.div>
         ) : (
           <div className="space-y-3">
-            {circle.map((person, i) => (
+            {circle.map((entry, i) => (
               <motion.div
-                key={person.id}
+                key={entry.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.08 }}
                 className="flex items-center gap-4 rounded-2xl border border-border bg-card p-4"
               >
-                {person.photo ? (
-                  <img src={person.photo} alt="" className="h-12 w-12 rounded-full object-cover" />
+                {entry.connected_profile.photo_url ? (
+                  <img src={entry.connected_profile.photo_url} alt="" className="h-12 w-12 rounded-full object-cover" />
                 ) : (
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary text-foreground font-display text-lg">
-                    {person.nickname[0]}
+                    {entry.connected_profile.nickname[0]}
                   </div>
                 )}
                 <div className="flex-1">
-                  <p className="font-body font-semibold text-foreground">{person.nickname}</p>
+                  <p className="font-body font-semibold text-foreground">{entry.connected_profile.nickname}</p>
                   <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{person.hometown}</span>
-                    <span className="flex items-center gap-1"><Briefcase className="h-3 w-3" />{person.profession}</span>
+                    <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{entry.connected_profile.hometown}</span>
+                    <span className="flex items-center gap-1"><Briefcase className="h-3 w-3" />{entry.connected_profile.profession}</span>
                   </div>
-                  <p className="text-[11px] text-muted-foreground mt-1">Connected {person.connectedAt} at {person.venue}</p>
+                  <p className="text-[11px] text-muted-foreground mt-1">Met at {entry.venue.name}</p>
                 </div>
               </motion.div>
             ))}

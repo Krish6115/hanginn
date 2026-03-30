@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Camera } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -10,30 +10,42 @@ import { useHanginnStore } from '@/lib/hanginnStore';
 
 const ProfileEntry = () => {
   const { roomType } = useParams<{ roomType: string }>();
+  const [searchParams] = useSearchParams();
+  const venueId = searchParams.get('venue') || '';
   const navigate = useNavigate();
-  const setUserProfile = useHanginnStore((s) => s.setUserProfile);
+  const { loginWithPhone, currentProfile } = useHanginnStore();
 
   const [form, setForm] = useState({
-    phone: '',
-    nickname: '',
-    ageBand: '',
-    hometown: '',
-    profession: '',
-    genderPreference: 'all' as 'all' | 'same',
+    phone: currentProfile?.phone || '',
+    nickname: currentProfile?.nickname || '',
+    ageBand: currentProfile?.age_band || '',
+    hometown: currentProfile?.hometown || '',
+    profession: currentProfile?.profession || '',
+    genderPreference: (currentProfile?.gender_preference || 'all') as 'all' | 'same',
   });
+  const [submitting, setSubmitting] = useState(false);
 
   const update = (key: string, value: string) => setForm((f) => ({ ...f, [key]: value }));
 
   const canSubmit = form.phone && form.nickname && form.ageBand && form.hometown && form.profession;
 
-  const handleSubmit = () => {
-    if (!canSubmit) return;
-    setUserProfile({
-      id: 'me',
-      ...form,
-      snoozed: false,
-    });
-    navigate(`/rooms/${roomType}/live`);
+  const handleSubmit = async () => {
+    if (!canSubmit || submitting) return;
+    setSubmitting(true);
+    try {
+      await loginWithPhone(form.phone, {
+        nickname: form.nickname,
+        age_band: form.ageBand,
+        hometown: form.hometown,
+        profession: form.profession,
+        gender_preference: form.genderPreference,
+      });
+      navigate(`/rooms/${roomType}/live?venue=${venueId}`);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -49,9 +61,8 @@ const ProfileEntry = () => {
 
       <main className="max-w-lg mx-auto px-6 py-8">
         <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-          <p className="text-sm text-muted-foreground">Just enough to help you meet the right people. Nothing is stored permanently.</p>
+          <p className="text-sm text-muted-foreground">Just enough to help you meet the right people. Your info stays with your phone number.</p>
 
-          {/* Photo upload (optional) */}
           <div className="flex justify-center">
             <button className="flex h-20 w-20 items-center justify-center rounded-full border-2 border-dashed border-border text-muted-foreground hover:border-primary hover:text-primary transition-colors">
               <Camera className="h-6 w-6" />
@@ -120,10 +131,10 @@ const ProfileEntry = () => {
 
           <Button
             onClick={handleSubmit}
-            disabled={!canSubmit}
+            disabled={!canSubmit || submitting}
             className="w-full rounded-xl py-6 text-base font-body font-semibold"
           >
-            Enter the room
+            {submitting ? 'Entering...' : 'Enter the room'}
           </Button>
         </motion.div>
       </main>
