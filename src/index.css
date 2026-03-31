@@ -80,6 +80,16 @@
   }
 }
 
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 @layer components {
   .room-card-hover {
     @apply transition-all duration-500 ease-out;
