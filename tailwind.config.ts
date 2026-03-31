@@ -14,8 +14,8 @@ export default {
     },
     extend: {
       fontFamily: {
-        display: ["DM Serif Display", "serif"],
-        body: ["DM Sans", "sans-serif"],
+        display: ["Playfair Display", "serif"],
+        body: ["Inter", "sans-serif"],
       },
       colors: {
         border: "hsl(var(--border))",
@@ -61,22 +61,19 @@ export default {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
-        warm: "hsl(var(--warm-glow))",
-        sage: {
-          DEFAULT: "hsl(var(--sage))",
-          light: "hsl(var(--sage-light))",
+        warm: "hsl(var(--warm-cream))",
+        espresso: {
+          DEFAULT: "hsl(var(--espresso))",
+          light: "hsl(var(--espresso-light))",
         },
-        terracotta: {
-          DEFAULT: "hsl(var(--terracotta))",
-          light: "hsl(var(--terracotta-light))",
-        },
-        sand: {
-          DEFAULT: "hsl(var(--sand))",
-          dark: "hsl(var(--sand-dark))",
+        bronze: {
+          DEFAULT: "hsl(var(--bronze))",
+          light: "hsl(var(--bronze-light))",
+          muted: "hsl(var(--bronze-muted))",
         },
         charcoal: {
           DEFAULT: "hsl(var(--charcoal))",
-          light: "hsl(var(--charcoal-light))",
+          deep: "hsl(var(--charcoal-deep))",
         },
       },
       borderRadius: {
