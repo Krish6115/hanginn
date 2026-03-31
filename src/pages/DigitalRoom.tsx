@@ -1,8 +1,8 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Moon, Sun, Users } from 'lucide-react';
-import { ROOMS, RHYTHMS, ANCHORS, ICEBREAKERS, RoomType } from '@/lib/types';
+import { ArrowLeft, Moon, Sun } from 'lucide-react';
+import { ROOMS, INTENTS, ANCHORS, RoomType } from '@/lib/types';
 import { useHanginnStore } from '@/lib/hanginnStore';
 import { supabase } from '@/integrations/supabase/client';
 import { PersonCard } from '@/components/PersonCard';
@@ -19,28 +19,29 @@ const DigitalRoom = () => {
   const { roomType } = useParams<{ roomType: string }>();
   const [searchParams] = useSearchParams();
   const venueId = searchParams.get('venue') || '';
+  const userIntent = searchParams.get('intent') || '';
+  const userVibe = searchParams.get('vibe') || '';
   const navigate = useNavigate();
 
   const {
     currentProfile, currentSessionId, joinRoom, leaveRoom,
     updateRhythm, toggleSnooze, sendConnectionRequest, respondToRequest, addToCircle,
-    setCurrentSession,
   } = useHanginnStore();
 
   const room = ROOMS.find((r) => r.type === roomType);
-  const rhythms = RHYTHMS[roomType as RoomType] || [];
+  const intents = INTENTS[roomType as RoomType] || [];
 
-  const [selectedRhythm, setSelectedRhythm] = useState(rhythms[0] || '');
+  const [selectedIntent, setSelectedIntent] = useState(userIntent || intents[0] || '');
   const [snoozed, setSnoozed] = useState(false);
   const [sessions, setSessions] = useState<SessionWithProfile[]>([]);
   const [requests, setRequests] = useState<Tables<'connection_requests'>[]>([]);
   const [sessionId, setSessionId] = useState(currentSessionId);
   const [loading, setLoading] = useState(true);
+  const [showReciprocity, setShowReciprocity] = useState(false);
 
-  const [anchorDialog, setAnchorDialog] = useState<string | null>(null); // request ID
+  const [anchorDialog, setAnchorDialog] = useState<string | null>(null);
   const [selectedAnchor, setSelectedAnchor] = useState('');
   const [showIcebreaker, setShowIcebreaker] = useState<{ anchor: string; icebreaker: string } | null>(null);
-  const [followUp, setFollowUp] = useState(false);
 
   // Join room on mount
   useEffect(() => {
@@ -50,19 +51,21 @@ const DigitalRoom = () => {
     }
 
     const init = async () => {
-      const sid = await joinRoom(currentProfile.id, venueId, roomType, selectedRhythm);
+      const sid = await joinRoom(currentProfile.id, venueId, roomType, selectedIntent);
       setSessionId(sid);
       setLoading(false);
     };
     init();
 
+    // Show reciprocity prompt after viewing profiles for a bit
+    const reciprocityTimer = setTimeout(() => setShowReciprocity(true), 15000);
+
     return () => {
-      // Leave room on unmount
+      clearTimeout(reciprocityTimer);
       if (sessionId) leaveRoom(sessionId);
     };
   }, []);
 
-  // Fetch sessions in this venue
   const fetchSessions = useCallback(async () => {
     if (!venueId) return;
     const { data } = await supabase
@@ -74,7 +77,6 @@ const DigitalRoom = () => {
     setSessions((data as SessionWithProfile[]) || []);
   }, [venueId, currentProfile]);
 
-  // Fetch connection requests involving me
   const fetchRequests = useCallback(async () => {
     if (!currentProfile || !venueId) return;
     const { data } = await supabase
@@ -109,7 +111,6 @@ const DigitalRoom = () => {
         filter: `venue_id=eq.${venueId}`,
       }, (payload) => {
         fetchRequests();
-        // Show icebreaker when a request we sent gets accepted
         const row = payload.new as Tables<'connection_requests'>;
         if (row.status === 'accepted' && row.sender_id === currentProfile?.id && row.icebreaker) {
           setShowIcebreaker({
@@ -126,26 +127,22 @@ const DigitalRoom = () => {
     };
   }, [venueId, currentProfile, fetchSessions, fetchRequests]);
 
-  // Follow-up timer (1 min for demo)
-  useEffect(() => {
-    const timer = setTimeout(() => setFollowUp(true), 60000);
-    return () => clearTimeout(timer);
-  }, []);
-
-  // Rhythm change
-  const handleRhythmChange = async (r: string) => {
-    setSelectedRhythm(r);
-    if (sessionId) await updateRhythm(sessionId, r);
+  const handleIntentChange = async (intent: string) => {
+    setSelectedIntent(intent);
+    if (sessionId) await updateRhythm(sessionId, intent);
   };
 
-  // Snooze toggle
   const handleSnooze = async () => {
     const newVal = !snoozed;
     setSnoozed(newVal);
     if (sessionId) await toggleSnooze(sessionId, newVal);
   };
 
-  // Derive person cards from sessions + requests
+  // Determine disclosure level based on reciprocity
+  const currentDisclosure = useMemo(() => {
+    return (currentProfile?.hometown && currentProfile?.profession) ? 2 : 1;
+  }, [currentProfile]);
+
   const people = useMemo(() => {
     return sessions.map((s) => {
       const profile = s.profiles;
@@ -157,6 +154,10 @@ const DigitalRoom = () => {
          (r.receiver_id === currentProfile?.id && r.sender_id === profile.id))
       );
 
+      // Reciprocity: show details at same level as current user
+      const otherDisclosure = (profile.hometown && profile.profession) ? 2 : 1;
+      const visibleLevel = Math.min(currentDisclosure, otherDisclosure);
+
       return {
         id: profile.id,
         nickname: profile.nickname,
@@ -165,21 +166,23 @@ const DigitalRoom = () => {
         hometown: profile.hometown,
         profession: profile.profession,
         photo: profile.photo_url || undefined,
-        rhythm: s.rhythm || '',
+        intent: s.rhythm || '',
+        vibe: undefined,
         connected,
         pendingRequest: sentReq?.status === 'pending' ? 'sent' as const
           : receivedReq ? 'received' as const
           : undefined,
         requestId: receivedReq?.id,
+        disclosureLevel: visibleLevel,
       };
     });
-  }, [sessions, requests, currentProfile]);
+  }, [sessions, requests, currentProfile, currentDisclosure]);
 
   const sorted = useMemo(() => {
-    const matching = people.filter((u) => u.rhythm === selectedRhythm);
-    const others = people.filter((u) => u.rhythm !== selectedRhythm);
+    const matching = people.filter((u) => u.intent === selectedIntent);
+    const others = people.filter((u) => u.intent !== selectedIntent);
     return [...matching, ...others];
-  }, [people, selectedRhythm]);
+  }, [people, selectedIntent]);
 
   const handleConnect = async (profileId: string) => {
     if (!currentProfile || !venueId) return;
@@ -208,6 +211,12 @@ const DigitalRoom = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Disable screenshots hint via CSS */}
+      <style>{`
+        .protected-room { -webkit-user-select: none; user-select: none; }
+        .protected-room img { pointer-events: none; -webkit-touch-callout: none; }
+      `}</style>
+
       <header className="sticky top-0 z-10 bg-background/80 backdrop-blur-md border-b border-border px-6 py-4">
         <div className="max-w-lg mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -215,34 +224,34 @@ const DigitalRoom = () => {
               <ArrowLeft className="h-5 w-5" />
             </button>
             <div>
-              <h2 className="font-display text-lg text-foreground">{room.icon} {room.label}</h2>
-              <p className="text-xs text-muted-foreground flex items-center gap-1">
-                <Users className="h-3 w-3" /> {sessions.length} people here
+              <h2 className="font-display text-lg text-foreground">{room.label}</h2>
+              <p className="text-xs text-muted-foreground font-body">
+                {sessions.length === 0 ? 'Just you for now' : sessions.length === 1 ? 'Someone else is here' : 'A few people are here'}
               </p>
             </div>
           </div>
-          <Button variant="outline" size="sm" onClick={handleSnooze} className="h-8 gap-1.5 text-xs rounded-full">
+          <button onClick={handleSnooze} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground font-body rounded-full border border-border px-3 py-1.5 transition-colors">
             {snoozed ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
             {snoozed ? 'Go active' : 'Snooze'}
-          </Button>
+          </button>
         </div>
       </header>
 
-      <main className="max-w-lg mx-auto px-6 py-6">
+      <main className="max-w-lg mx-auto px-6 py-6 protected-room">
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mb-6">
-          <p className="text-xs text-muted-foreground mb-2 font-medium">Your rhythm right now</p>
+          <p className="text-xs text-muted-foreground mb-2 font-body">Your intent right now</p>
           <div className="flex flex-wrap gap-2">
-            {rhythms.map((r) => (
+            {intents.map((intent) => (
               <button
-                key={r}
-                onClick={() => handleRhythmChange(r)}
-                className={`rounded-full px-4 py-1.5 text-sm font-body transition-all ${
-                  selectedRhythm === r
-                    ? 'bg-primary text-primary-foreground shadow-sm'
+                key={intent}
+                onClick={() => handleIntentChange(intent)}
+                className={`rounded-full px-4 py-1.5 text-sm font-body transition-all duration-300 ${
+                  selectedIntent === intent
+                    ? 'bg-primary text-primary-foreground'
                     : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
                 }`}
               >
-                {r}
+                {intent}
               </button>
             ))}
           </div>
@@ -250,10 +259,25 @@ const DigitalRoom = () => {
 
         {snoozed && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}
-            className="mb-4 rounded-xl bg-warm p-3 text-center text-sm text-muted-foreground">
-            😴 You're on snooze. Connections paused.
+            className="mb-4 rounded-xl bg-secondary p-3 text-center text-sm text-muted-foreground font-body">
+            You're on snooze. Connections paused.
           </motion.div>
         )}
+
+        {/* Reciprocity prompt */}
+        <AnimatePresence>
+          {showReciprocity && currentDisclosure < 2 && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="mb-4 rounded-xl border border-primary/10 bg-primary/5 p-4"
+            >
+              <p className="text-sm text-foreground font-body">Share a little more to unlock more</p>
+              <p className="text-xs text-muted-foreground font-body mt-1">Add your hometown and profession to see fuller profiles.</p>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {loading ? (
           <div className="space-y-3">
@@ -261,8 +285,7 @@ const DigitalRoom = () => {
           </div>
         ) : sorted.length === 0 ? (
           <div className="text-center py-16">
-            <p className="text-3xl mb-3">🏠</p>
-            <p className="text-muted-foreground font-body text-sm">No one else is here yet. Be the first!</p>
+            <p className="text-muted-foreground font-body text-sm">No one else is here yet. Be the first.</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -271,7 +294,7 @@ const DigitalRoom = () => {
                 <PersonCard
                   key={user.id}
                   user={user}
-                  isMatchingRhythm={user.rhythm === selectedRhythm}
+                  isMatchingIntent={user.intent === selectedIntent}
                   snoozed={snoozed}
                   onConnect={() => handleConnect(user.id)}
                   onRespond={(accept) => {
@@ -290,21 +313,25 @@ const DigitalRoom = () => {
         <DialogContent className="rounded-2xl">
           <DialogHeader>
             <DialogTitle className="font-display">Where are you sitting?</DialogTitle>
-            <DialogDescription>Share your anchor so they can find you.</DialogDescription>
+            <DialogDescription className="font-body">Share your anchor so they can find you.</DialogDescription>
           </DialogHeader>
           <div className="flex flex-wrap gap-2 mt-2">
             {ANCHORS.map((a) => (
               <button key={a} onClick={() => setSelectedAnchor(a)}
-                className={`rounded-full px-4 py-2 text-sm transition-colors ${
+                className={`rounded-full px-4 py-2 text-sm font-body transition-colors ${
                   selectedAnchor === a ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
                 }`}>
                 {a}
               </button>
             ))}
           </div>
-          <Button onClick={handleAnchorSubmit} disabled={!selectedAnchor} className="w-full mt-4 rounded-xl">
-            Share & get icebreaker
-          </Button>
+          <button
+            onClick={handleAnchorSubmit}
+            disabled={!selectedAnchor}
+            className="w-full mt-4 rounded-xl py-3 text-sm font-body bg-primary/90 text-primary-foreground hover:bg-primary transition-colors disabled:opacity-50"
+          >
+            Share and get icebreaker
+          </button>
         </DialogContent>
       </Dialog>
 
@@ -312,35 +339,23 @@ const DigitalRoom = () => {
       <Dialog open={!!showIcebreaker} onOpenChange={() => setShowIcebreaker(null)}>
         <DialogContent className="rounded-2xl text-center">
           <DialogHeader>
-            <DialogTitle className="font-display text-xl">You're connected! 🎉</DialogTitle>
+            <DialogTitle className="font-display text-xl">You're connected</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 mt-2">
-            <div className="rounded-xl bg-sage-light p-4">
-              <p className="text-xs text-muted-foreground mb-1">Their anchor</p>
-              <p className="font-body font-semibold text-foreground">{showIcebreaker?.anchor}</p>
+            <div className="rounded-xl bg-secondary p-4">
+              <p className="text-xs text-muted-foreground mb-1 font-body">Their anchor</p>
+              <p className="font-body font-medium text-foreground">{showIcebreaker?.anchor}</p>
             </div>
-            <div className="rounded-xl bg-terracotta-light p-4">
-              <p className="text-xs text-muted-foreground mb-1">Icebreaker</p>
+            <div className="rounded-xl bg-primary/5 border border-primary/10 p-4">
+              <p className="text-xs text-muted-foreground mb-1 font-body">Icebreaker</p>
               <p className="font-body text-sm text-foreground italic">"{showIcebreaker?.icebreaker}"</p>
             </div>
-            <Button onClick={() => setShowIcebreaker(null)} className="w-full rounded-xl">Go meet them!</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Follow-up dialog */}
-      <Dialog open={followUp} onOpenChange={setFollowUp}>
-        <DialogContent className="rounded-2xl text-center">
-          <DialogHeader>
-            <DialogTitle className="font-display text-xl">How's it going? 👋</DialogTitle>
-            <DialogDescription>Did you connect with anyone?</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3 mt-4">
-            <Button variant="outline" onClick={() => setFollowUp(false)} className="w-full rounded-xl">Yes! It went great</Button>
-            <Button variant="outline" onClick={() => setFollowUp(false)} className="w-full rounded-xl">Still looking</Button>
-            <Button variant="outline" onClick={() => { setFollowUp(false); navigate('/circle'); }} className="w-full rounded-xl">
-              Add to My Circle
-            </Button>
+            <button
+              onClick={() => setShowIcebreaker(null)}
+              className="w-full rounded-xl py-3 text-sm font-body bg-primary/90 text-primary-foreground hover:bg-primary transition-colors"
+            >
+              Go meet them
+            </button>
           </div>
         </DialogContent>
       </Dialog>

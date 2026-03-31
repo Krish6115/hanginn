@@ -1,12 +1,51 @@
 import { useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { ArrowLeft, Camera } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ArrowLeft } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { AGE_BANDS } from '@/lib/types';
+import { AGE_BANDS, INTENTS, RoomType } from '@/lib/types';
 import { useHanginnStore } from '@/lib/hanginnStore';
+
+const TransitDetails = ({ details, onChange }: {
+  details: { destination: string; flightTime: string; travelWindow: string; ticket: string };
+  onChange: (d: any) => void;
+}) => (
+  <motion.div
+    initial={{ opacity: 0, height: 0 }}
+    animate={{ opacity: 1, height: 'auto' }}
+    exit={{ opacity: 0, height: 0 }}
+    className="space-y-3 overflow-hidden"
+  >
+    <p className="text-xs text-muted-foreground font-body">Share travel details (optional)</p>
+    <Input
+      placeholder="Destination"
+      value={details.destination}
+      onChange={(e) => onChange({ ...details, destination: e.target.value })}
+      className="bg-secondary border-border"
+    />
+    <div className="flex gap-2">
+      <Input
+        placeholder="Flight time"
+        value={details.flightTime}
+        onChange={(e) => onChange({ ...details, flightTime: e.target.value })}
+        className="bg-secondary border-border flex-1"
+      />
+      <Input
+        placeholder="Window"
+        value={details.travelWindow}
+        onChange={(e) => onChange({ ...details, travelWindow: e.target.value })}
+        className="bg-secondary border-border flex-1"
+      />
+    </div>
+    <Input
+      placeholder="Ticket or booking ref (optional)"
+      value={details.ticket}
+      onChange={(e) => onChange({ ...details, ticket: e.target.value })}
+      className="bg-secondary border-border"
+    />
+  </motion.div>
+);
 
 const ProfileEntry = () => {
   const { roomType } = useParams<{ roomType: string }>();
@@ -14,20 +53,22 @@ const ProfileEntry = () => {
   const venueId = searchParams.get('venue') || '';
   const navigate = useNavigate();
   const { loginWithPhone, currentProfile } = useHanginnStore();
+  const intents = INTENTS[roomType as RoomType] || [];
 
   const [form, setForm] = useState({
     phone: currentProfile?.phone || '',
     nickname: currentProfile?.nickname || '',
     ageBand: currentProfile?.age_band || '',
-    hometown: currentProfile?.hometown || '',
-    profession: currentProfile?.profession || '',
-    genderPreference: (currentProfile?.gender_preference || 'all') as 'all' | 'same',
+    intent: '',
+    vibe: '',
   });
+  const [showTransit, setShowTransit] = useState(false);
+  const [transitDetails, setTransitDetails] = useState({ destination: '', flightTime: '', travelWindow: '', ticket: '' });
   const [submitting, setSubmitting] = useState(false);
 
   const update = (key: string, value: string) => setForm((f) => ({ ...f, [key]: value }));
 
-  const canSubmit = form.phone && form.nickname && form.ageBand && form.hometown && form.profession;
+  const canSubmit = form.phone && form.nickname && form.ageBand && form.intent;
 
   const handleSubmit = async () => {
     if (!canSubmit || submitting) return;
@@ -36,11 +77,12 @@ const ProfileEntry = () => {
       await loginWithPhone(form.phone, {
         nickname: form.nickname,
         age_band: form.ageBand,
-        hometown: form.hometown,
-        profession: form.profession,
-        gender_preference: form.genderPreference,
+        hometown: '',
+        profession: '',
+        gender_preference: 'all',
       });
-      navigate(`/rooms/${roomType}/live?venue=${venueId}`);
+      // Navigate to digital room with intent as rhythm
+      navigate(`/rooms/${roomType}/live?venue=${venueId}&intent=${encodeURIComponent(form.intent)}&vibe=${encodeURIComponent(form.vibe)}`);
     } catch (e) {
       console.error(e);
     } finally {
@@ -55,39 +97,50 @@ const ProfileEntry = () => {
           <button onClick={() => navigate(-1)} className="text-muted-foreground hover:text-foreground transition-colors">
             <ArrowLeft className="h-5 w-5" />
           </button>
-          <h2 className="font-display text-lg text-foreground">Quick intro</h2>
+          <h2 className="font-display text-lg text-foreground">Step in</h2>
         </div>
       </header>
 
       <main className="max-w-lg mx-auto px-6 py-8">
-        <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-          <p className="text-sm text-muted-foreground">Just enough to help you meet the right people. Your info stays with your phone number.</p>
-
-          <div className="flex justify-center">
-            <button className="flex h-20 w-20 items-center justify-center rounded-full border-2 border-dashed border-border text-muted-foreground hover:border-primary hover:text-primary transition-colors">
-              <Camera className="h-6 w-6" />
-            </button>
+        <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
+          <div>
+            <p className="font-display text-base text-foreground leading-relaxed">
+              Just enough to help you feel comfortable here.
+            </p>
+            <p className="text-sm text-muted-foreground mt-1 font-body font-light">
+              Your details stay private.
+            </p>
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-5">
             <div>
-              <Label className="text-xs text-muted-foreground mb-1.5 block">Phone number</Label>
-              <Input placeholder="+91 98765 43210" value={form.phone} onChange={(e) => update('phone', e.target.value)} />
+              <Label className="text-xs text-muted-foreground mb-1.5 block font-body">Phone number</Label>
+              <Input
+                placeholder="+91 98765 43210"
+                value={form.phone}
+                onChange={(e) => update('phone', e.target.value)}
+                className="bg-secondary border-border"
+              />
             </div>
 
             <div>
-              <Label className="text-xs text-muted-foreground mb-1.5 block">Nickname</Label>
-              <Input placeholder="What should people call you?" value={form.nickname} onChange={(e) => update('nickname', e.target.value)} />
+              <Label className="text-xs text-muted-foreground mb-1.5 block font-body">Nickname</Label>
+              <Input
+                placeholder="What should people call you?"
+                value={form.nickname}
+                onChange={(e) => update('nickname', e.target.value)}
+                className="bg-secondary border-border"
+              />
             </div>
 
             <div>
-              <Label className="text-xs text-muted-foreground mb-1.5 block">Age band</Label>
+              <Label className="text-xs text-muted-foreground mb-1.5 block font-body">Age band</Label>
               <div className="flex flex-wrap gap-2">
                 {AGE_BANDS.map((band) => (
                   <button
                     key={band}
                     onClick={() => update('ageBand', band)}
-                    className={`rounded-full px-4 py-1.5 text-sm font-body transition-colors ${
+                    className={`rounded-full px-4 py-1.5 text-sm font-body transition-all duration-300 ${
                       form.ageBand === band
                         ? 'bg-primary text-primary-foreground'
                         : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
@@ -98,44 +151,77 @@ const ProfileEntry = () => {
                 ))}
               </div>
             </div>
+          </div>
 
+          {/* Intent selection */}
+          <div className="space-y-3">
             <div>
-              <Label className="text-xs text-muted-foreground mb-1.5 block">Hometown</Label>
-              <Input placeholder="Where are you from?" value={form.hometown} onChange={(e) => update('hometown', e.target.value)} />
+              <p className="font-display text-base text-foreground">Right now, I'm here to...</p>
+              <p className="text-xs text-muted-foreground mt-1 font-body font-light">
+                We bring people together based on common intent.
+              </p>
             </div>
-
-            <div>
-              <Label className="text-xs text-muted-foreground mb-1.5 block">Profession</Label>
-              <Input placeholder="What do you do?" value={form.profession} onChange={(e) => update('profession', e.target.value)} />
-            </div>
-
-            <div>
-              <Label className="text-xs text-muted-foreground mb-1.5 block">Open to connect with</Label>
-              <div className="flex gap-2">
-                {[{ v: 'all' as const, l: 'All genders' }, { v: 'same' as const, l: 'Same gender' }].map(({ v, l }) => (
-                  <button
-                    key={v}
-                    onClick={() => update('genderPreference', v)}
-                    className={`flex-1 rounded-xl py-2.5 text-sm font-body transition-colors ${
-                      form.genderPreference === v
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
-                    }`}
-                  >
-                    {l}
-                  </button>
-                ))}
-              </div>
+            <div className="flex flex-wrap gap-2">
+              {intents.map((intent) => (
+                <button
+                  key={intent}
+                  onClick={() => update('intent', intent)}
+                  className={`rounded-full px-5 py-2 text-sm font-body transition-all duration-300 ${
+                    form.intent === intent
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                  }`}
+                >
+                  {intent}
+                </button>
+              ))}
             </div>
           </div>
 
-          <Button
+          {/* Transit details */}
+          {roomType === 'transit' && form.intent && (
+            <div>
+              <button
+                onClick={() => setShowTransit(!showTransit)}
+                className="text-xs text-muted-foreground hover:text-foreground font-body transition-colors underline underline-offset-4 decoration-border"
+              >
+                {showTransit ? 'Hide travel details' : 'Add travel details'}
+              </button>
+              <AnimatePresence>
+                {showTransit && (
+                  <div className="mt-3">
+                    <TransitDetails details={transitDetails} onChange={setTransitDetails} />
+                  </div>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
+
+          {/* Vibe */}
+          <div>
+            <Label className="text-xs text-muted-foreground mb-1.5 block font-body">Add your vibe (optional)</Label>
+            <Input
+              placeholder="A short note about your energy right now"
+              value={form.vibe}
+              onChange={(e) => update('vibe', e.target.value.slice(0, 60))}
+              maxLength={60}
+              className="bg-secondary border-border"
+            />
+            <p className="text-[10px] text-muted-foreground/60 mt-1 text-right font-body">{form.vibe.length}/60</p>
+          </div>
+
+          {/* CTA */}
+          <button
             onClick={handleSubmit}
             disabled={!canSubmit || submitting}
-            className="w-full rounded-xl py-6 text-base font-body font-semibold"
+            className={`w-full rounded-2xl py-4 text-sm font-body font-medium tracking-wide transition-all duration-500 ${
+              canSubmit && !submitting
+                ? 'bg-primary/90 text-primary-foreground hover:bg-primary'
+                : 'bg-secondary text-muted-foreground cursor-not-allowed'
+            }`}
           >
-            {submitting ? 'Entering...' : 'Enter the room'}
-          </Button>
+            {submitting ? 'Entering...' : 'Step inside'}
+          </button>
         </motion.div>
       </main>
     </div>
