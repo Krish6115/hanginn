@@ -29,11 +29,11 @@ const venueImages: Record<RoomType, string[]> = {
 };
 
 const venueNames: Record<RoomType, string[]> = {
-  social: ['Third Wave Coffee', 'The Hideout Café', 'Brewed Awakening'],
+  social: ['Third Wave Coffee', 'The Hideout Cafe', 'Brewed Awakening'],
   intellectual: ['Central Library', 'University Commons', 'The Reading Room'],
   official: ['WeWork Prestige', 'CoLab Studios', 'The Hive Office'],
   play: ['Arena Gaming Zone', 'SportSquare Turf', 'PlayDen Arcade'],
-  transit: ['Terminal 2 Lounge', 'SkyWait Café', 'Transit Hub Lounge'],
+  transit: ['Terminal 2 Lounge', 'SkyWait Cafe', 'Transit Hub Lounge'],
 };
 
 export function getVenuesForRoom(roomType: RoomType): Venue[] {
@@ -41,8 +41,8 @@ export function getVenuesForRoom(roomType: RoomType): Venue[] {
     id: `${roomType}-${i}`,
     name,
     image: venueImages[roomType][i],
-    peopleCount: Math.floor(Math.random() * 15) + 3,
-    topRhythms: ['Open to chat', 'Looking for company'],
+    presence: 'quiet' as const,
+    snapshot: 'A quiet moment. Be the first to step in.',
     roomType,
     address: `${Math.floor(Math.random() * 200) + 1} Main Street`,
   }));
@@ -63,19 +63,20 @@ const nicknames = ['Arjun', 'Priya', 'Sam', 'Meera', 'Kai', 'Noor', 'Reya', 'Dev
 const hometowns = ['Mumbai', 'Delhi', 'Bangalore', 'Pune', 'Chennai', 'Hyderabad', 'Kolkata', 'Goa'];
 const professions = ['Designer', 'Engineer', 'Student', 'Writer', 'Freelancer', 'Founder', 'Researcher', 'Artist'];
 
-export function getRoomUsers(roomType: RoomType, userRhythm: string, rhythms: string[]): RoomUser[] {
+export function getRoomUsers(roomType: RoomType, userIntent: string, intents: string[]): RoomUser[] {
   return nicknames.map((name, i) => {
-    const rhythm = i < 3 ? userRhythm : rhythms[Math.floor(Math.random() * rhythms.length)];
+    const intent = i < 3 ? userIntent : intents[Math.floor(Math.random() * intents.length)];
     return {
       id: `user-${i}`,
       nickname: name,
       firstInitial: name[0],
-      ageBand: ['18–22', '23–27', '28–32', '33–40'][i % 4],
+      ageBand: ['18-22', '23-27', '28-32', '33-40'][i % 4],
       hometown: hometowns[i],
       profession: professions[i],
       photo: avatars[i],
-      rhythm,
+      intent,
       connected: false,
+      disclosureLevel: i % 2 === 0 ? 2 : 1,
     };
   });
 }
