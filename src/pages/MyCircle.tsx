@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, MapPin, Briefcase } from 'lucide-react';
+import { MapPin, Briefcase } from 'lucide-react';
 import { useHanginnStore } from '@/lib/hanginnStore';
 
 interface CircleEntry {
@@ -19,7 +18,6 @@ interface CircleEntry {
 }
 
 const MyCircle = () => {
-  const navigate = useNavigate();
   const { currentProfile, fetchCircle } = useHanginnStore();
   const [circle, setCircle] = useState<CircleEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -36,12 +34,9 @@ const MyCircle = () => {
   }, [currentProfile]);
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background pb-20">
       <header className="sticky top-0 z-10 bg-background/80 backdrop-blur-md border-b border-border px-6 py-4">
-        <div className="max-w-lg mx-auto flex items-center gap-3">
-          <button onClick={() => navigate('/')} className="text-muted-foreground hover:text-foreground transition-colors">
-            <ArrowLeft className="h-5 w-5" />
-          </button>
+        <div className="max-w-lg mx-auto">
           <h2 className="font-display text-lg text-foreground">My Circle</h2>
         </div>
       </header>
@@ -53,9 +48,8 @@ const MyCircle = () => {
           </div>
         ) : circle.length === 0 ? (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-20">
-            <p className="text-4xl mb-4">🤝</p>
-            <p className="text-muted-foreground font-body">
-              {currentProfile ? 'No connections yet. Enter a room to start meeting people!' : 'Enter a room first to start building your circle.'}
+            <p className="text-muted-foreground font-body text-sm">
+              {currentProfile ? 'No connections yet. Enter a room to start meeting people.' : 'Enter a room first to start building your circle.'}
             </p>
           </motion.div>
         ) : (
@@ -69,7 +63,9 @@ const MyCircle = () => {
                 className="flex items-center gap-4 rounded-2xl border border-border bg-card p-4"
               >
                 {entry.connected_profile.photo_url ? (
-                  <img src={entry.connected_profile.photo_url} alt="" className="h-12 w-12 rounded-full object-cover" />
+                  <div className="h-12 w-12 rounded-full overflow-hidden shrink-0 select-none pointer-events-none">
+                    <img src={entry.connected_profile.photo_url} alt="" className="h-full w-full object-cover" draggable={false} />
+                  </div>
                 ) : (
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary text-foreground font-display text-lg">
                     {entry.connected_profile.nickname[0]}
@@ -78,8 +74,12 @@ const MyCircle = () => {
                 <div className="flex-1">
                   <p className="font-body font-semibold text-foreground">{entry.connected_profile.nickname}</p>
                   <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{entry.connected_profile.hometown}</span>
-                    <span className="flex items-center gap-1"><Briefcase className="h-3 w-3" />{entry.connected_profile.profession}</span>
+                    {entry.connected_profile.hometown && (
+                      <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{entry.connected_profile.hometown}</span>
+                    )}
+                    {entry.connected_profile.profession && (
+                      <span className="flex items-center gap-1"><Briefcase className="h-3 w-3" />{entry.connected_profile.profession}</span>
+                    )}
                   </div>
                   <p className="text-[11px] text-muted-foreground mt-1">Met at {entry.venue.name}</p>
                 </div>

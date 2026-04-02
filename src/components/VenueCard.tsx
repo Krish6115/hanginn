@@ -6,9 +6,9 @@ interface VenueCardProps {
 }
 
 const PRESENCE_CONFIG: Record<PresenceState, { color: string; label: string }> = {
-  quiet: { color: 'bg-foreground/60', label: 'Quiet' },
-  flowing: { color: 'bg-blue-400/60', label: 'Flowing' },
-  vibrant: { color: 'bg-orange-400/60', label: 'Vibrant' },
+  quiet: { color: 'bg-foreground/60', label: 'Quiet presence' },
+  flowing: { color: 'bg-blue-400/50', label: 'Flowing' },
+  vibrant: { color: 'bg-orange-400/50', label: 'Vibrant' },
 };
 
 export function VenueCard({ venue, onClick }: VenueCardProps) {
@@ -17,27 +17,36 @@ export function VenueCard({ venue, onClick }: VenueCardProps) {
   return (
     <button
       onClick={onClick}
-      className="room-card-hover flex w-full items-start gap-4 rounded-2xl border border-border bg-card p-5 text-left cursor-pointer focus:outline-none focus:ring-1 focus:ring-ring"
+      className="room-card-hover flex w-full flex-col rounded-2xl border border-border bg-card overflow-hidden text-left cursor-pointer focus:outline-none focus:ring-1 focus:ring-ring"
     >
       {venue.image && (
-        <img
-          src={venue.image}
-          alt={venue.name}
-          loading="lazy"
-          className="h-24 w-24 rounded-xl object-cover opacity-80 shrink-0"
-        />
+        <div className="relative w-full h-32 overflow-hidden">
+          <img
+            src={venue.image}
+            alt={venue.name}
+            loading="lazy"
+            className="w-full h-full object-cover opacity-70"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-card via-card/30 to-transparent" />
+          {/* Venue identity marker */}
+          <div className="absolute top-3 left-3 flex items-center gap-1.5 rounded-full bg-background/60 backdrop-blur-sm px-2.5 py-1">
+            <div className="h-4 w-4 rounded-full bg-secondary flex items-center justify-center">
+              <span className="text-[8px] font-display text-foreground">{venue.name[0]}</span>
+            </div>
+            <span className="text-[10px] font-body text-foreground/80">{venue.name.split(' ')[0]}</span>
+          </div>
+        </div>
       )}
-      <div className="flex-1 min-w-0 py-0.5">
+      <div className="px-5 py-4 space-y-2">
         <div className="flex items-center gap-2.5">
-          <h3 className="font-display text-lg text-foreground truncate">{venue.name}</h3>
+          <h3 className="font-display text-lg text-foreground truncate flex-1">{venue.name}</h3>
           <span className="flex items-center gap-1.5 shrink-0">
             <span className={`h-2 w-2 rounded-full ${presence.color} animate-pulse-soft`} />
-            <span className="text-[10px] text-muted-foreground font-body">{presence.label}</span>
           </span>
         </div>
-        <p className="text-xs text-muted-foreground mt-1 font-body">{venue.address}</p>
+        <p className="text-xs text-muted-foreground font-body">{venue.address}</p>
         {venue.snapshot && (
-          <p className="mt-2.5 text-[12px] leading-relaxed text-secondary-foreground font-body font-light italic">
+          <p className="text-[12px] leading-relaxed text-secondary-foreground font-body font-light italic">
             {venue.snapshot}
           </p>
         )}

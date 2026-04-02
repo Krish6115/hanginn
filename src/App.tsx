@@ -3,11 +3,15 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { BottomNav } from "@/components/BottomNav";
 import Index from "./pages/Index.tsx";
 import RoomVenues from "./pages/RoomVenues.tsx";
 import ProfileEntry from "./pages/ProfileEntry.tsx";
+import VerifyPresence from "./pages/VerifyPresence.tsx";
 import DigitalRoom from "./pages/DigitalRoom.tsx";
 import MyCircle from "./pages/MyCircle.tsx";
+import Notifications from "./pages/Notifications.tsx";
+import MyProfile from "./pages/MyProfile.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -22,10 +26,14 @@ const App = () => (
           <Route path="/" element={<Index />} />
           <Route path="/rooms/:roomType" element={<RoomVenues />} />
           <Route path="/rooms/:roomType/join" element={<ProfileEntry />} />
+          <Route path="/rooms/:roomType/verify" element={<VerifyPresence />} />
           <Route path="/rooms/:roomType/live" element={<DigitalRoom />} />
           <Route path="/circle" element={<MyCircle />} />
+          <Route path="/notifications" element={<Notifications />} />
+          <Route path="/profile" element={<MyProfile />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
+        <BottomNav />
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

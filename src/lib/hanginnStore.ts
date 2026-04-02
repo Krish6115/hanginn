@@ -7,21 +7,39 @@ type Profile = Tables<'profiles'>;
 type RoomSession = Tables<'room_sessions'> & { profiles: Profile };
 type ConnectionRequest = Tables<'connection_requests'>;
 
+interface SessionState {
+  roomType: string;
+  venueId: string;
+  step: 'venue' | 'profile' | 'verify' | 'room';
+  intent?: string;
+  vibe?: string;
+}
+
 interface HanginnState {
-  // User identity (persisted via localStorage phone)
   currentProfile: Profile | null;
   currentSessionId: string | null;
   currentVenueId: string | null;
   currentRoomType: string | null;
+  authUser: any | null;
 
-  // Actions
   setCurrentProfile: (p: Profile) => void;
+  setAuthUser: (u: any) => void;
   setCurrentSession: (sessionId: string, venueId: string, roomType: string) => void;
 
+  // Session persistence
+  saveSessionState: (state: SessionState) => void;
+  getSessionState: () => SessionState | null;
+  clearSessionState: () => void;
+
+  // Auth operations
+  sendEmailOtp: (email: string) => Promise<void>;
+  verifyEmailOtp: (email: string, token: string) => Promise<boolean>;
+  signOut: () => Promise<void>;
+
   // Profile operations
-  loginWithPhone: (phone: string, data: {
-    nickname: string; age_band: string; hometown: string;
-    profession: string; gender_preference: string; photo_url?: string;
+  upsertProfile: (email: string, data: {
+    nickname: string; age_band: string; hometown?: string;
+    profession?: string; gender_preference?: string; photo_url?: string;
   }) => Promise<Profile>;
 
   // Venue operations
@@ -41,47 +59,96 @@ interface HanginnState {
 
   // Circle
   fetchCircle: (profileId: string) => Promise<(Tables<'circles'> & { connected_profile: Profile; venue: Tables<'venues'> })[]>;
+
+  // Profile update
+  updateProfile: (profileId: string, data: Partial<{
+    nickname: string; hometown: string; profession: string; photo_url: string;
+  }>) => Promise<void>;
 }
 
-export const useHanginnStore = create<HanginnState>((set) => ({
+export const useHanginnStore = create<HanginnState>((set, get) => ({
   currentProfile: null,
   currentSessionId: null,
   currentVenueId: null,
   currentRoomType: null,
+  authUser: null,
 
   setCurrentProfile: (p) => set({ currentProfile: p }),
+  setAuthUser: (u) => set({ authUser: u }),
   setCurrentSession: (sessionId, venueId, roomType) =>
     set({ currentSessionId: sessionId, currentVenueId: venueId, currentRoomType: roomType }),
 
-  loginWithPhone: async (phone, data) => {
-    // Upsert profile by phone
+  saveSessionState: (state) => {
+    localStorage.setItem('hanginn_session', JSON.stringify(state));
+  },
+  getSessionState: () => {
+    const s = localStorage.getItem('hanginn_session');
+    return s ? JSON.parse(s) : null;
+  },
+  clearSessionState: () => {
+    localStorage.removeItem('hanginn_session');
+  },
+
+  sendEmailOtp: async (email) => {
+    const { error } = await supabase.auth.signInWithOtp({ email });
+    if (error) throw error;
+  },
+
+  verifyEmailOtp: async (email, token) => {
+    const { data, error } = await supabase.auth.verifyOtp({ email, token, type: 'email' });
+    if (error) throw error;
+    if (data.user) {
+      set({ authUser: data.user });
+      localStorage.setItem('hanginn_email', email);
+      return true;
+    }
+    return false;
+  },
+
+  signOut: async () => {
+    await supabase.auth.signOut();
+    set({ authUser: null, currentProfile: null, currentSessionId: null, currentVenueId: null, currentRoomType: null });
+    localStorage.removeItem('hanginn_email');
+    localStorage.removeItem('hanginn_session');
+  },
+
+  upsertProfile: async (email, data) => {
     const { data: existing } = await supabase
       .from('profiles')
       .select('*')
-      .eq('phone', phone)
+      .eq('email', email)
       .maybeSingle();
 
     if (existing) {
       const { data: updated } = await supabase
         .from('profiles')
-        .update(data)
+        .update({ ...data, email })
         .eq('id', existing.id)
         .select()
         .single();
       const profile = updated!;
       set({ currentProfile: profile });
-      localStorage.setItem('hanginn_phone', phone);
       return profile;
     }
 
+    const { data: authUser } = await supabase.auth.getUser();
     const { data: created } = await supabase
       .from('profiles')
-      .insert({ phone, ...data })
+      .insert({
+        email,
+        phone: '',
+        nickname: data.nickname,
+        age_band: data.age_band,
+        hometown: data.hometown || '',
+        profession: data.profession || '',
+        gender_preference: data.gender_preference || 'all',
+        photo_url: data.photo_url,
+        user_id: authUser?.user?.id || null,
+      })
       .select()
       .single();
     const profile = created!;
     set({ currentProfile: profile });
-    localStorage.setItem('hanginn_phone', phone);
     return profile;
   },
 
@@ -103,7 +170,6 @@ export const useHanginnStore = create<HanginnState>((set) => ({
   },
 
   joinRoom: async (profileId, venueId, roomType, rhythm) => {
-    // Deactivate any existing sessions
     await supabase
       .from('room_sessions')
       .update({ is_active: false })
@@ -127,6 +193,7 @@ export const useHanginnStore = create<HanginnState>((set) => ({
       .update({ is_active: false })
       .eq('id', sessionId);
     set({ currentSessionId: null, currentVenueId: null, currentRoomType: null });
+    get().clearSessionState();
   },
 
   updateRhythm: async (sessionId, rhythm) => {
@@ -162,7 +229,6 @@ export const useHanginnStore = create<HanginnState>((set) => ({
   },
 
   addToCircle: async (profileId, connectedProfileId, venueId) => {
-    // Add both directions
     await supabase.from('circles').insert([
       { profile_id: profileId, connected_profile_id: connectedProfileId, venue_id: venueId },
       { profile_id: connectedProfileId, connected_profile_id: profileId, venue_id: venueId },
@@ -177,19 +243,34 @@ export const useHanginnStore = create<HanginnState>((set) => ({
       .order('created_at', { ascending: false });
     return (data as any) || [];
   },
+
+  updateProfile: async (profileId, data) => {
+    const { data: updated } = await supabase
+      .from('profiles')
+      .update(data)
+      .eq('id', profileId)
+      .select()
+      .single();
+    if (updated) set({ currentProfile: updated });
+  },
 }));
 
-// Auto-restore session from localStorage
-const savedPhone = localStorage.getItem('hanginn_phone');
-if (savedPhone) {
-  supabase
-    .from('profiles')
-    .select('*')
-    .eq('phone', savedPhone)
-    .maybeSingle()
-    .then(({ data }) => {
+// Auto-restore session from Supabase Auth
+supabase.auth.onAuthStateChange(async (event, session) => {
+  if (session?.user) {
+    useHanginnStore.getState().setAuthUser(session.user);
+    const email = session.user.email;
+    if (email) {
+      const { data } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('email', email)
+        .maybeSingle();
       if (data) {
         useHanginnStore.getState().setCurrentProfile(data);
       }
-    });
-}
+    }
+  } else {
+    useHanginnStore.getState().setAuthUser(null);
+  }
+});

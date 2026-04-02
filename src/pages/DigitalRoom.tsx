@@ -6,7 +6,6 @@ import { ROOMS, INTENTS, ANCHORS, RoomType } from '@/lib/types';
 import { useHanginnStore } from '@/lib/hanginnStore';
 import { supabase } from '@/integrations/supabase/client';
 import { PersonCard } from '@/components/PersonCard';
-import { Button } from '@/components/ui/button';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog';
@@ -25,7 +24,8 @@ const DigitalRoom = () => {
 
   const {
     currentProfile, currentSessionId, joinRoom, leaveRoom,
-    updateRhythm, toggleSnooze, sendConnectionRequest, respondToRequest, addToCircle,
+    updateRhythm, toggleSnooze, sendConnectionRequest, respondToRequest,
+    saveSessionState, updateProfile,
   } = useHanginnStore();
 
   const room = ROOMS.find((r) => r.type === roomType);
@@ -43,7 +43,6 @@ const DigitalRoom = () => {
   const [selectedAnchor, setSelectedAnchor] = useState('');
   const [showIcebreaker, setShowIcebreaker] = useState<{ anchor: string; icebreaker: string } | null>(null);
 
-  // Join room on mount
   useEffect(() => {
     if (!currentProfile || !venueId || !roomType) {
       navigate(`/rooms/${roomType}/join?venue=${venueId}`);
@@ -54,10 +53,10 @@ const DigitalRoom = () => {
       const sid = await joinRoom(currentProfile.id, venueId, roomType, selectedIntent);
       setSessionId(sid);
       setLoading(false);
+      saveSessionState({ roomType, venueId, step: 'room', intent: selectedIntent, vibe: userVibe });
     };
     init();
 
-    // Show reciprocity prompt after viewing profiles for a bit
     const reciprocityTimer = setTimeout(() => setShowReciprocity(true), 15000);
 
     return () => {
@@ -92,39 +91,23 @@ const DigitalRoom = () => {
     fetchRequests();
   }, [fetchSessions, fetchRequests]);
 
-  // Real-time subscriptions
   useEffect(() => {
     if (!venueId) return;
-
     const sessionSub = supabase
       .channel('room-sessions')
-      .on('postgres_changes', {
-        event: '*', schema: 'public', table: 'room_sessions',
-        filter: `venue_id=eq.${venueId}`,
-      }, () => fetchSessions())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'room_sessions', filter: `venue_id=eq.${venueId}` }, () => fetchSessions())
       .subscribe();
-
     const requestSub = supabase
       .channel('connection-requests')
-      .on('postgres_changes', {
-        event: '*', schema: 'public', table: 'connection_requests',
-        filter: `venue_id=eq.${venueId}`,
-      }, (payload) => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'connection_requests', filter: `venue_id=eq.${venueId}` }, (payload) => {
         fetchRequests();
         const row = payload.new as Tables<'connection_requests'>;
         if (row.status === 'accepted' && row.sender_id === currentProfile?.id && row.icebreaker) {
-          setShowIcebreaker({
-            anchor: row.receiver_anchor || 'Somewhere nearby',
-            icebreaker: row.icebreaker,
-          });
+          setShowIcebreaker({ anchor: row.receiver_anchor || 'Somewhere nearby', icebreaker: row.icebreaker });
         }
       })
       .subscribe();
-
-    return () => {
-      supabase.removeChannel(sessionSub);
-      supabase.removeChannel(requestSub);
-    };
+    return () => { supabase.removeChannel(sessionSub); supabase.removeChannel(requestSub); };
   }, [venueId, currentProfile, fetchSessions, fetchRequests]);
 
   const handleIntentChange = async (intent: string) => {
@@ -138,7 +121,6 @@ const DigitalRoom = () => {
     if (sessionId) await toggleSnooze(sessionId, newVal);
   };
 
-  // Determine disclosure level based on reciprocity
   const currentDisclosure = useMemo(() => {
     return (currentProfile?.hometown && currentProfile?.profession) ? 2 : 1;
   }, [currentProfile]);
@@ -153,8 +135,6 @@ const DigitalRoom = () => {
         ((r.sender_id === currentProfile?.id && r.receiver_id === profile.id) ||
          (r.receiver_id === currentProfile?.id && r.sender_id === profile.id))
       );
-
-      // Reciprocity: show details at same level as current user
       const otherDisclosure = (profile.hometown && profile.profession) ? 2 : 1;
       const visibleLevel = Math.min(currentDisclosure, otherDisclosure);
 
@@ -190,10 +170,7 @@ const DigitalRoom = () => {
     fetchRequests();
   };
 
-  const handleAccept = (requestId: string) => {
-    setAnchorDialog(requestId);
-  };
-
+  const handleAccept = (requestId: string) => { setAnchorDialog(requestId); };
   const handleAnchorSubmit = async () => {
     if (!anchorDialog || !selectedAnchor) return;
     await respondToRequest(anchorDialog, true, selectedAnchor);
@@ -201,7 +178,6 @@ const DigitalRoom = () => {
     setSelectedAnchor('');
     fetchRequests();
   };
-
   const handleReject = async (requestId: string) => {
     await respondToRequest(requestId, false);
     fetchRequests();
@@ -211,7 +187,6 @@ const DigitalRoom = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Disable screenshots hint via CSS */}
       <style>{`
         .protected-room { -webkit-user-select: none; user-select: none; }
         .protected-room img { pointer-events: none; -webkit-touch-callout: none; }
@@ -220,7 +195,7 @@ const DigitalRoom = () => {
       <header className="sticky top-0 z-10 bg-background/80 backdrop-blur-md border-b border-border px-6 py-4">
         <div className="max-w-lg mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <button onClick={() => navigate('/')} className="text-muted-foreground hover:text-foreground transition-colors">
+            <button onClick={() => { if (sessionId) leaveRoom(sessionId); navigate('/'); }} className="text-muted-foreground hover:text-foreground transition-colors">
               <ArrowLeft className="h-5 w-5" />
             </button>
             <div>
@@ -242,15 +217,10 @@ const DigitalRoom = () => {
           <p className="text-xs text-muted-foreground mb-2 font-body">Your intent right now</p>
           <div className="flex flex-wrap gap-2">
             {intents.map((intent) => (
-              <button
-                key={intent}
-                onClick={() => handleIntentChange(intent)}
+              <button key={intent} onClick={() => handleIntentChange(intent)}
                 className={`rounded-full px-4 py-1.5 text-sm font-body transition-all duration-300 ${
-                  selectedIntent === intent
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
-                }`}
-              >
+                  selectedIntent === intent ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                }`}>
                 {intent}
               </button>
             ))}
@@ -264,17 +234,18 @@ const DigitalRoom = () => {
           </motion.div>
         )}
 
-        {/* Reciprocity prompt */}
         <AnimatePresence>
           {showReciprocity && currentDisclosure < 2 && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="mb-4 rounded-xl border border-primary/10 bg-primary/5 p-4"
-            >
+            <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
+              className="mb-4 rounded-xl border border-primary/10 bg-primary/5 p-4">
               <p className="text-sm text-foreground font-body">Share a little more to unlock more</p>
               <p className="text-xs text-muted-foreground font-body mt-1">Add your hometown and profession to see fuller profiles.</p>
+              <button
+                onClick={() => navigate('/profile')}
+                className="mt-2 text-xs text-primary font-body underline underline-offset-4"
+              >
+                Add details
+              </button>
             </motion.div>
           )}
         </AnimatePresence>
@@ -308,7 +279,6 @@ const DigitalRoom = () => {
         )}
       </main>
 
-      {/* Anchor dialog */}
       <Dialog open={!!anchorDialog} onOpenChange={() => setAnchorDialog(null)}>
         <DialogContent className="rounded-2xl">
           <DialogHeader>
@@ -325,17 +295,13 @@ const DigitalRoom = () => {
               </button>
             ))}
           </div>
-          <button
-            onClick={handleAnchorSubmit}
-            disabled={!selectedAnchor}
-            className="w-full mt-4 rounded-xl py-3 text-sm font-body bg-primary/90 text-primary-foreground hover:bg-primary transition-colors disabled:opacity-50"
-          >
+          <button onClick={handleAnchorSubmit} disabled={!selectedAnchor}
+            className="w-full mt-4 rounded-xl py-3 text-sm font-body bg-primary/90 text-primary-foreground hover:bg-primary transition-colors disabled:opacity-50">
             Share and get icebreaker
           </button>
         </DialogContent>
       </Dialog>
 
-      {/* Icebreaker dialog */}
       <Dialog open={!!showIcebreaker} onOpenChange={() => setShowIcebreaker(null)}>
         <DialogContent className="rounded-2xl text-center">
           <DialogHeader>
@@ -350,10 +316,8 @@ const DigitalRoom = () => {
               <p className="text-xs text-muted-foreground mb-1 font-body">Icebreaker</p>
               <p className="font-body text-sm text-foreground italic">"{showIcebreaker?.icebreaker}"</p>
             </div>
-            <button
-              onClick={() => setShowIcebreaker(null)}
-              className="w-full rounded-xl py-3 text-sm font-body bg-primary/90 text-primary-foreground hover:bg-primary transition-colors"
-            >
+            <button onClick={() => setShowIcebreaker(null)}
+              className="w-full rounded-xl py-3 text-sm font-body bg-primary/90 text-primary-foreground hover:bg-primary transition-colors">
               Go meet them
             </button>
           </div>
