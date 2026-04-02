@@ -17,12 +17,14 @@ export interface Venue {
   snapshot: string;
   roomType: RoomType;
   address: string;
+  lat?: number;
+  lng?: number;
 }
 
 export interface UserProfile {
   id: string;
   nickname: string;
-  phone: string;
+  email: string;
   ageBand: string;
   photo?: string;
   hometown: string;
@@ -46,7 +48,7 @@ export interface RoomUser {
   connected: boolean;
   pendingRequest?: 'sent' | 'received';
   requestId?: string;
-  disclosureLevel: number; // 1 = basic, 2 = with optional fields
+  disclosureLevel: number;
 }
 
 export interface CirclePerson {
@@ -97,7 +99,6 @@ export const ICEBREAKERS = [
   "If you had a free afternoon with no plans, what would you do?",
 ];
 
-// Generate a human-readable snapshot from session intents
 export function generateVenueSnapshot(intents: string[], roomType: RoomType): string {
   if (intents.length === 0) return 'A quiet moment. Be the first to step in.';
 
@@ -157,4 +158,16 @@ export function getPresenceState(count: number): PresenceState {
   if (count <= 2) return 'quiet';
   if (count <= 6) return 'flowing';
   return 'vibrant';
+}
+
+// Geofencing utility
+export function getDistanceMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371e3;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }

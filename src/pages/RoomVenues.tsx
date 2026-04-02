@@ -6,8 +6,7 @@ import { ROOMS, getPresenceState, generateVenueSnapshot } from '@/lib/types';
 import { useHanginnStore } from '@/lib/hanginnStore';
 import { VenueCard } from '@/components/VenueCard';
 import { supabase } from '@/integrations/supabase/client';
-import type { Tables } from '@/integrations/supabase/types';
-import type { PresenceState, Venue } from '@/lib/types';
+import type { Venue } from '@/lib/types';
 
 const RoomVenues = () => {
   const { roomType } = useParams<{ roomType: string }>();
@@ -24,7 +23,6 @@ const RoomVenues = () => {
       const v = await fetchVenues(roomType);
       const enriched = await Promise.all(
         v.map(async (venue) => {
-          // Get active sessions with their intents
           const { data: sessions } = await supabase
             .from('room_sessions')
             .select('rhythm')
@@ -44,6 +42,8 @@ const RoomVenues = () => {
             snapshot,
             roomType: venue.room_type as any,
             address: venue.address,
+            lat: venue.lat ? Number(venue.lat) : undefined,
+            lng: venue.lng ? Number(venue.lng) : undefined,
           };
         })
       );
@@ -73,34 +73,23 @@ const RoomVenues = () => {
       </header>
 
       <main className="max-w-lg mx-auto px-6 py-6">
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex items-center gap-2 mb-6 text-sm text-muted-foreground"
-        >
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+          className="flex items-center gap-2 mb-8 text-sm text-muted-foreground">
           <MapPin className="h-4 w-4" />
-          <span>Showing venues near you</span>
+          <span className="font-body">Showing venues near you</span>
         </motion.div>
 
         {loading ? (
-          <div className="space-y-4">
+          <div className="space-y-5">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="h-32 rounded-2xl bg-secondary animate-pulse" />
+              <div key={i} className="h-40 rounded-2xl bg-secondary animate-pulse" />
             ))}
           </div>
         ) : (
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-5">
             {venues.map((venue, i) => (
-              <motion.div
-                key={venue.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.08 }}
-              >
-                <VenueCard
-                  venue={venue}
-                  onClick={() => navigate(`/rooms/${roomType}/join?venue=${venue.id}`)}
-                />
+              <motion.div key={venue.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}>
+                <VenueCard venue={venue} onClick={() => navigate(`/rooms/${roomType}/join?venue=${venue.id}`)} />
               </motion.div>
             ))}
           </div>

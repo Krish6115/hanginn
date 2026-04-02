@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
@@ -18,45 +18,37 @@ const TransitDetails = ({ details, onChange }: {
     className="space-y-3 overflow-hidden"
   >
     <p className="text-xs text-muted-foreground font-body">Share travel details (optional)</p>
-    <Input
-      placeholder="Destination"
-      value={details.destination}
+    <Input placeholder="Destination" value={details.destination}
       onChange={(e) => onChange({ ...details, destination: e.target.value })}
-      className="bg-secondary border-border"
-    />
+      className="bg-secondary border-border" />
     <div className="flex gap-2">
-      <Input
-        placeholder="Flight time"
-        value={details.flightTime}
+      <Input placeholder="Flight time" value={details.flightTime}
         onChange={(e) => onChange({ ...details, flightTime: e.target.value })}
-        className="bg-secondary border-border flex-1"
-      />
-      <Input
-        placeholder="Window"
-        value={details.travelWindow}
+        className="bg-secondary border-border flex-1" />
+      <Input placeholder="Window" value={details.travelWindow}
         onChange={(e) => onChange({ ...details, travelWindow: e.target.value })}
-        className="bg-secondary border-border flex-1"
-      />
+        className="bg-secondary border-border flex-1" />
     </div>
-    <Input
-      placeholder="Ticket or booking ref (optional)"
-      value={details.ticket}
+    <Input placeholder="Ticket or booking ref (optional)" value={details.ticket}
       onChange={(e) => onChange({ ...details, ticket: e.target.value })}
-      className="bg-secondary border-border"
-    />
+      className="bg-secondary border-border" />
   </motion.div>
 );
+
+type Step = 'email' | 'otp' | 'details' | 'intent';
 
 const ProfileEntry = () => {
   const { roomType } = useParams<{ roomType: string }>();
   const [searchParams] = useSearchParams();
   const venueId = searchParams.get('venue') || '';
   const navigate = useNavigate();
-  const { loginWithPhone, currentProfile } = useHanginnStore();
+  const { sendEmailOtp, verifyEmailOtp, upsertProfile, currentProfile, authUser, saveSessionState } = useHanginnStore();
   const intents = INTENTS[roomType as RoomType] || [];
 
+  const [step, setStep] = useState<Step>('email');
+  const [email, setEmail] = useState('');
+  const [otp, setOtp] = useState('');
   const [form, setForm] = useState({
-    phone: currentProfile?.phone || '',
     nickname: currentProfile?.nickname || '',
     ageBand: currentProfile?.age_band || '',
     intent: '',
@@ -65,24 +57,90 @@ const ProfileEntry = () => {
   const [showTransit, setShowTransit] = useState(false);
   const [transitDetails, setTransitDetails] = useState({ destination: '', flightTime: '', travelWindow: '', ticket: '' });
   const [submitting, setSubmitting] = useState(false);
+  const [otpSending, setOtpSending] = useState(false);
+  const [otpError, setOtpError] = useState('');
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const otpRef = useRef<HTMLInputElement>(null);
+
+  // Skip to details if already authenticated
+  useEffect(() => {
+    if (authUser && currentProfile) {
+      setStep('intent');
+      setForm((f) => ({
+        ...f,
+        nickname: currentProfile.nickname || f.nickname,
+        ageBand: currentProfile.age_band || f.ageBand,
+      }));
+    } else if (authUser) {
+      setStep('details');
+      setEmail(authUser.email || '');
+    }
+  }, [authUser, currentProfile]);
+
+  // Resend cooldown timer
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const t = setTimeout(() => setResendCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [resendCooldown]);
 
   const update = (key: string, value: string) => setForm((f) => ({ ...f, [key]: value }));
 
-  const canSubmit = form.phone && form.nickname && form.ageBand && form.intent;
+  const handleSendOtp = async () => {
+    if (!email || otpSending) return;
+    setOtpSending(true);
+    setOtpError('');
+    try {
+      await sendEmailOtp(email);
+      setStep('otp');
+      setResendCooldown(60);
+      setTimeout(() => otpRef.current?.focus(), 300);
+    } catch (e: any) {
+      setOtpError(e.message || 'Failed to send code');
+    } finally {
+      setOtpSending(false);
+    }
+  };
+
+  const handleVerifyOtp = async () => {
+    if (!otp || submitting) return;
+    setSubmitting(true);
+    setOtpError('');
+    try {
+      const ok = await verifyEmailOtp(email, otp);
+      if (ok) {
+        if (currentProfile) {
+          setStep('intent');
+          setForm((f) => ({
+            ...f,
+            nickname: currentProfile.nickname || f.nickname,
+            ageBand: currentProfile.age_band || f.ageBand,
+          }));
+        } else {
+          setStep('details');
+        }
+      }
+    } catch (e: any) {
+      setOtpError(e.message || 'Invalid code');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDetailsNext = () => {
+    if (form.nickname && form.ageBand) setStep('intent');
+  };
 
   const handleSubmit = async () => {
-    if (!canSubmit || submitting) return;
+    if (!form.intent || submitting) return;
     setSubmitting(true);
     try {
-      await loginWithPhone(form.phone, {
+      await upsertProfile(email, {
         nickname: form.nickname,
         age_band: form.ageBand,
-        hometown: '',
-        profession: '',
-        gender_preference: 'all',
       });
-      // Navigate to digital room with intent as rhythm
-      navigate(`/rooms/${roomType}/live?venue=${venueId}&intent=${encodeURIComponent(form.intent)}&vibe=${encodeURIComponent(form.vibe)}`);
+      saveSessionState({ roomType: roomType!, venueId, step: 'verify', intent: form.intent, vibe: form.vibe });
+      navigate(`/rooms/${roomType}/verify?venue=${venueId}&intent=${encodeURIComponent(form.intent)}&vibe=${encodeURIComponent(form.vibe)}`);
     } catch (e) {
       console.error(e);
     } finally {
@@ -112,116 +170,192 @@ const ProfileEntry = () => {
             </p>
           </div>
 
-          <div className="space-y-5">
-            <div>
-              <Label className="text-xs text-muted-foreground mb-1.5 block font-body">Phone number</Label>
-              <Input
-                placeholder="+91 98765 43210"
-                value={form.phone}
-                onChange={(e) => update('phone', e.target.value)}
-                className="bg-secondary border-border"
-              />
-            </div>
-
-            <div>
-              <Label className="text-xs text-muted-foreground mb-1.5 block font-body">Nickname</Label>
-              <Input
-                placeholder="What should people call you?"
-                value={form.nickname}
-                onChange={(e) => update('nickname', e.target.value)}
-                className="bg-secondary border-border"
-              />
-            </div>
-
-            <div>
-              <Label className="text-xs text-muted-foreground mb-1.5 block font-body">Age band</Label>
-              <div className="flex flex-wrap gap-2">
-                {AGE_BANDS.map((band) => (
-                  <button
-                    key={band}
-                    onClick={() => update('ageBand', band)}
-                    className={`rounded-full px-4 py-1.5 text-sm font-body transition-all duration-300 ${
-                      form.ageBand === band
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
-                    }`}
-                  >
-                    {band}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Intent selection */}
-          <div className="space-y-3">
-            <div>
-              <p className="font-display text-base text-foreground">Right now, I'm here to...</p>
-              <p className="text-xs text-muted-foreground mt-1 font-body font-light">
-                We bring people together based on common intent.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {intents.map((intent) => (
+          <AnimatePresence mode="wait">
+            {/* Step 1: Email */}
+            {step === 'email' && (
+              <motion.div key="email" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-5">
+                <div>
+                  <Label className="text-xs text-muted-foreground mb-1.5 block font-body">Email address</Label>
+                  <Input
+                    type="email"
+                    placeholder="you@email.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="bg-secondary border-border"
+                  />
+                </div>
+                {otpError && <p className="text-xs text-destructive font-body">{otpError}</p>}
                 <button
-                  key={intent}
-                  onClick={() => update('intent', intent)}
-                  className={`rounded-full px-5 py-2 text-sm font-body transition-all duration-300 ${
-                    form.intent === intent
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                  onClick={handleSendOtp}
+                  disabled={!email || otpSending}
+                  className={`w-full rounded-2xl py-4 text-sm font-body font-medium tracking-wide transition-all duration-500 ${
+                    email && !otpSending
+                      ? 'bg-primary/90 text-primary-foreground hover:bg-primary'
+                      : 'bg-secondary text-muted-foreground cursor-not-allowed'
                   }`}
                 >
-                  {intent}
+                  {otpSending ? 'Sending...' : 'Continue'}
                 </button>
-              ))}
-            </div>
-          </div>
+              </motion.div>
+            )}
 
-          {/* Transit details */}
-          {roomType === 'transit' && form.intent && (
-            <div>
-              <button
-                onClick={() => setShowTransit(!showTransit)}
-                className="text-xs text-muted-foreground hover:text-foreground font-body transition-colors underline underline-offset-4 decoration-border"
-              >
-                {showTransit ? 'Hide travel details' : 'Add travel details'}
-              </button>
-              <AnimatePresence>
-                {showTransit && (
-                  <div className="mt-3">
-                    <TransitDetails details={transitDetails} onChange={setTransitDetails} />
+            {/* Step 2: OTP Verification */}
+            {step === 'otp' && (
+              <motion.div key="otp" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-5">
+                <div>
+                  <p className="text-sm text-muted-foreground font-body mb-1">We sent a code to <span className="text-foreground">{email}</span></p>
+                  <Label className="text-xs text-muted-foreground mb-1.5 block font-body">Verification code</Label>
+                  <Input
+                    ref={otpRef}
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="Enter 6-digit code"
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    maxLength={6}
+                    className="bg-secondary border-border text-center text-lg tracking-[0.3em]"
+                  />
+                </div>
+                {otpError && <p className="text-xs text-destructive font-body">{otpError}</p>}
+                <button
+                  onClick={handleVerifyOtp}
+                  disabled={otp.length < 6 || submitting}
+                  className={`w-full rounded-2xl py-4 text-sm font-body font-medium tracking-wide transition-all duration-500 ${
+                    otp.length >= 6 && !submitting
+                      ? 'bg-primary/90 text-primary-foreground hover:bg-primary'
+                      : 'bg-secondary text-muted-foreground cursor-not-allowed'
+                  }`}
+                >
+                  {submitting ? 'Verifying...' : 'Verify'}
+                </button>
+                <button
+                  onClick={handleSendOtp}
+                  disabled={resendCooldown > 0}
+                  className="w-full text-xs text-muted-foreground hover:text-foreground font-body transition-colors"
+                >
+                  {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend code'}
+                </button>
+              </motion.div>
+            )}
+
+            {/* Step 3: Details */}
+            {step === 'details' && (
+              <motion.div key="details" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-5">
+                <div>
+                  <Label className="text-xs text-muted-foreground mb-1.5 block font-body">Nickname</Label>
+                  <Input
+                    placeholder="What should people call you?"
+                    value={form.nickname}
+                    onChange={(e) => update('nickname', e.target.value)}
+                    className="bg-secondary border-border"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground mb-1.5 block font-body">Age band</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {AGE_BANDS.map((band) => (
+                      <button
+                        key={band}
+                        onClick={() => update('ageBand', band)}
+                        className={`rounded-full px-4 py-1.5 text-sm font-body transition-all duration-300 ${
+                          form.ageBand === band
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                        }`}
+                      >
+                        {band}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <button
+                  onClick={handleDetailsNext}
+                  disabled={!form.nickname || !form.ageBand}
+                  className={`w-full rounded-2xl py-4 text-sm font-body font-medium tracking-wide transition-all duration-500 ${
+                    form.nickname && form.ageBand
+                      ? 'bg-primary/90 text-primary-foreground hover:bg-primary'
+                      : 'bg-secondary text-muted-foreground cursor-not-allowed'
+                  }`}
+                >
+                  Continue
+                </button>
+              </motion.div>
+            )}
+
+            {/* Step 4: Intent */}
+            {step === 'intent' && (
+              <motion.div key="intent" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-8">
+                <div className="space-y-3">
+                  <div>
+                    <p className="font-display text-base text-foreground">Right now, I'm here to...</p>
+                    <p className="text-xs text-muted-foreground mt-1 font-body font-light">
+                      We bring people together based on common intent.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {intents.map((intent) => (
+                      <button
+                        key={intent}
+                        onClick={() => update('intent', intent)}
+                        className={`rounded-full px-5 py-2 text-sm font-body transition-all duration-300 ${
+                          form.intent === intent
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                        }`}
+                      >
+                        {intent}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Transit details */}
+                {roomType === 'transit' && form.intent && (
+                  <div>
+                    <button
+                      onClick={() => setShowTransit(!showTransit)}
+                      className="text-xs text-muted-foreground hover:text-foreground font-body transition-colors underline underline-offset-4 decoration-border"
+                    >
+                      {showTransit ? 'Hide travel details' : 'Add travel details'}
+                    </button>
+                    <AnimatePresence>
+                      {showTransit && (
+                        <div className="mt-3">
+                          <TransitDetails details={transitDetails} onChange={setTransitDetails} />
+                        </div>
+                      )}
+                    </AnimatePresence>
                   </div>
                 )}
-              </AnimatePresence>
-            </div>
-          )}
 
-          {/* Vibe */}
-          <div>
-            <Label className="text-xs text-muted-foreground mb-1.5 block font-body">Add your vibe (optional)</Label>
-            <Input
-              placeholder="A short note about your energy right now"
-              value={form.vibe}
-              onChange={(e) => update('vibe', e.target.value.slice(0, 60))}
-              maxLength={60}
-              className="bg-secondary border-border"
-            />
-            <p className="text-[10px] text-muted-foreground/60 mt-1 text-right font-body">{form.vibe.length}/60</p>
-          </div>
+                {/* Vibe */}
+                <div>
+                  <Label className="text-xs text-muted-foreground mb-1.5 block font-body">Add your vibe (optional)</Label>
+                  <Input
+                    placeholder="A short note about your energy right now"
+                    value={form.vibe}
+                    onChange={(e) => update('vibe', e.target.value.slice(0, 60))}
+                    maxLength={60}
+                    className="bg-secondary border-border"
+                  />
+                  <p className="text-[10px] text-muted-foreground/60 mt-1 text-right font-body">{form.vibe.length}/60</p>
+                </div>
 
-          {/* CTA */}
-          <button
-            onClick={handleSubmit}
-            disabled={!canSubmit || submitting}
-            className={`w-full rounded-2xl py-4 text-sm font-body font-medium tracking-wide transition-all duration-500 ${
-              canSubmit && !submitting
-                ? 'bg-primary/90 text-primary-foreground hover:bg-primary'
-                : 'bg-secondary text-muted-foreground cursor-not-allowed'
-            }`}
-          >
-            {submitting ? 'Entering...' : 'Step inside'}
-          </button>
+                {/* CTA */}
+                <button
+                  onClick={handleSubmit}
+                  disabled={!form.intent || submitting}
+                  className={`w-full rounded-2xl py-4 text-sm font-body font-medium tracking-wide transition-all duration-500 ${
+                    form.intent && !submitting
+                      ? 'bg-primary/90 text-primary-foreground hover:bg-primary'
+                      : 'bg-secondary text-muted-foreground cursor-not-allowed'
+                  }`}
+                >
+                  {submitting ? 'Entering...' : 'Step inside'}
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </motion.div>
       </main>
     </div>
