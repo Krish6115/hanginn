@@ -125,38 +125,44 @@ export type Database = {
         Row: {
           age_band: string
           created_at: string
+          email: string | null
           gender_preference: string
           hometown: string
           id: string
           nickname: string
-          phone: string
+          phone: string | null
           photo_url: string | null
           profession: string
           updated_at: string
+          user_id: string | null
         }
         Insert: {
           age_band: string
           created_at?: string
+          email?: string | null
           gender_preference?: string
-          hometown: string
+          hometown?: string
           id?: string
           nickname: string
-          phone: string
+          phone?: string | null
           photo_url?: string | null
-          profession: string
+          profession?: string
           updated_at?: string
+          user_id?: string | null
         }
         Update: {
           age_band?: string
           created_at?: string
+          email?: string | null
           gender_preference?: string
           hometown?: string
           id?: string
           nickname?: string
-          phone?: string
+          phone?: string | null
           photo_url?: string | null
           profession?: string
           updated_at?: string
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -217,6 +223,8 @@ export type Database = {
           created_at: string
           id: string
           image_url: string | null
+          lat: number | null
+          lng: number | null
           name: string
           room_type: string
         }
@@ -225,6 +233,8 @@ export type Database = {
           created_at?: string
           id?: string
           image_url?: string | null
+          lat?: number | null
+          lng?: number | null
           name: string
           room_type: string
         }
@@ -233,6 +243,8 @@ export type Database = {
           created_at?: string
           id?: string
           image_url?: string | null
+          lat?: number | null
+          lng?: number | null
           name?: string
           room_type?: string
         }
