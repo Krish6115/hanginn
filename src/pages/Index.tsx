@@ -14,11 +14,12 @@ const trustItems = [
 
 const footerLinks = ['About', 'How it works', 'Safety', 'Terms', 'Blog'];
 
+const ACTIVE_ROOMS: RoomType[] = ['social', 'intellectual', 'official', 'play'];
+
 const Index = () => {
   const navigate = useNavigate();
   const { currentProfile, getSessionState } = useHanginnStore();
 
-  // Session resume
   useEffect(() => {
     const saved = getSessionState();
     if (saved && currentProfile) {
@@ -31,6 +32,8 @@ const Index = () => {
   const handleSelect = (roomType: RoomType) => {
     navigate(`/rooms/${roomType}`);
   };
+
+  const activeRooms = ROOMS.filter((r) => ACTIVE_ROOMS.includes(r.type));
 
   return (
     <div className="min-h-screen bg-background flex flex-col pb-16">
@@ -45,11 +48,6 @@ const Index = () => {
           className="font-display text-xl tracking-wide text-foreground">
           hanginn
         </motion.span>
-        <motion.button initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 1, delay: 0.3 }}
-          onClick={() => navigate('/profile')}
-          className="font-body text-sm font-light text-muted-foreground hover:text-foreground transition-colors duration-500">
-          {currentProfile ? currentProfile.nickname : 'Sign In'}
-        </motion.button>
       </header>
 
       <main className="relative z-10 flex-1 flex flex-col px-6 pb-12">
@@ -92,7 +90,7 @@ const Index = () => {
             Where should we take you?
           </h2>
           <div className="flex gap-3 overflow-x-auto pb-4 -mx-6 px-6 scrollbar-hide snap-x snap-mandatory">
-            {ROOMS.map((room, i) => (
+            {activeRooms.map((room, i) => (
               <RoomCard key={room.type} room={room} index={i} onClick={() => handleSelect(room.type)} />
             ))}
           </div>
