@@ -7,34 +7,6 @@ import { Label } from '@/components/ui/label';
 import { AGE_BANDS, INTENTS, RoomType } from '@/lib/types';
 import { useHanginnStore } from '@/lib/hanginnStore';
 
-const TransitDetails = ({ details, onChange }: {
-  details: { destination: string; flightTime: string; travelWindow: string; ticket: string };
-  onChange: (d: any) => void;
-}) => (
-  <motion.div
-    initial={{ opacity: 0, height: 0 }}
-    animate={{ opacity: 1, height: 'auto' }}
-    exit={{ opacity: 0, height: 0 }}
-    className="space-y-3 overflow-hidden"
-  >
-    <p className="text-xs text-muted-foreground font-body">Share travel details (optional)</p>
-    <Input placeholder="Destination" value={details.destination}
-      onChange={(e) => onChange({ ...details, destination: e.target.value })}
-      className="bg-secondary border-border" />
-    <div className="flex gap-2">
-      <Input placeholder="Flight time" value={details.flightTime}
-        onChange={(e) => onChange({ ...details, flightTime: e.target.value })}
-        className="bg-secondary border-border flex-1" />
-      <Input placeholder="Window" value={details.travelWindow}
-        onChange={(e) => onChange({ ...details, travelWindow: e.target.value })}
-        className="bg-secondary border-border flex-1" />
-    </div>
-    <Input placeholder="Ticket or booking ref (optional)" value={details.ticket}
-      onChange={(e) => onChange({ ...details, ticket: e.target.value })}
-      className="bg-secondary border-border" />
-  </motion.div>
-);
-
 type Step = 'email' | 'otp' | 'details' | 'intent';
 
 const ProfileEntry = () => {
@@ -54,15 +26,12 @@ const ProfileEntry = () => {
     intent: '',
     vibe: '',
   });
-  const [showTransit, setShowTransit] = useState(false);
-  const [transitDetails, setTransitDetails] = useState({ destination: '', flightTime: '', travelWindow: '', ticket: '' });
   const [submitting, setSubmitting] = useState(false);
   const [otpSending, setOtpSending] = useState(false);
   const [otpError, setOtpError] = useState('');
   const [resendCooldown, setResendCooldown] = useState(0);
   const otpRef = useRef<HTMLInputElement>(null);
 
-  // Skip to details if already authenticated
   useEffect(() => {
     if (authUser && currentProfile) {
       setStep('intent');
@@ -77,7 +46,6 @@ const ProfileEntry = () => {
     }
   }, [authUser, currentProfile]);
 
-  // Resend cooldown timer
   useEffect(() => {
     if (resendCooldown <= 0) return;
     const t = setTimeout(() => setResendCooldown((c) => c - 1), 1000);
@@ -171,7 +139,6 @@ const ProfileEntry = () => {
           </div>
 
           <AnimatePresence mode="wait">
-            {/* Step 1: Email */}
             {step === 'email' && (
               <motion.div key="email" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-5">
                 <div>
@@ -199,7 +166,6 @@ const ProfileEntry = () => {
               </motion.div>
             )}
 
-            {/* Step 2: OTP Verification */}
             {step === 'otp' && (
               <motion.div key="otp" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-5">
                 <div>
@@ -238,7 +204,6 @@ const ProfileEntry = () => {
               </motion.div>
             )}
 
-            {/* Step 3: Details */}
             {step === 'details' && (
               <motion.div key="details" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-5">
                 <div>
@@ -282,7 +247,6 @@ const ProfileEntry = () => {
               </motion.div>
             )}
 
-            {/* Step 4: Intent */}
             {step === 'intent' && (
               <motion.div key="intent" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-8">
                 <div className="space-y-3">
@@ -309,26 +273,6 @@ const ProfileEntry = () => {
                   </div>
                 </div>
 
-                {/* Transit details */}
-                {roomType === 'transit' && form.intent && (
-                  <div>
-                    <button
-                      onClick={() => setShowTransit(!showTransit)}
-                      className="text-xs text-muted-foreground hover:text-foreground font-body transition-colors underline underline-offset-4 decoration-border"
-                    >
-                      {showTransit ? 'Hide travel details' : 'Add travel details'}
-                    </button>
-                    <AnimatePresence>
-                      {showTransit && (
-                        <div className="mt-3">
-                          <TransitDetails details={transitDetails} onChange={setTransitDetails} />
-                        </div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                )}
-
-                {/* Vibe */}
                 <div>
                   <Label className="text-xs text-muted-foreground mb-1.5 block font-body">Add your vibe (optional)</Label>
                   <Input
@@ -341,18 +285,22 @@ const ProfileEntry = () => {
                   <p className="text-[10px] text-muted-foreground/60 mt-1 text-right font-body">{form.vibe.length}/60</p>
                 </div>
 
-                {/* CTA */}
-                <button
-                  onClick={handleSubmit}
-                  disabled={!form.intent || submitting}
-                  className={`w-full rounded-2xl py-4 text-sm font-body font-medium tracking-wide transition-all duration-500 ${
-                    form.intent && !submitting
-                      ? 'bg-primary/90 text-primary-foreground hover:bg-primary'
-                      : 'bg-secondary text-muted-foreground cursor-not-allowed'
-                  }`}
-                >
-                  {submitting ? 'Entering...' : 'Step inside'}
-                </button>
+                <div className="space-y-3">
+                  <p className="text-xs text-muted-foreground/60 font-body font-light text-center">
+                    This space is shaped by the people inside it.
+                  </p>
+                  <button
+                    onClick={handleSubmit}
+                    disabled={!form.intent || submitting}
+                    className={`w-full rounded-2xl py-4 text-sm font-body font-medium tracking-wide transition-all duration-500 ${
+                      form.intent && !submitting
+                        ? 'bg-primary/90 text-primary-foreground hover:bg-primary'
+                        : 'bg-secondary text-muted-foreground cursor-not-allowed'
+                    }`}
+                  >
+                    {submitting ? 'Entering...' : 'Step inside'}
+                  </button>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>

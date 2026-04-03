@@ -14,6 +14,27 @@ export type Database = {
   }
   public: {
     Tables: {
+      blocked_users: {
+        Row: {
+          blocked_id: string
+          blocker_id: string
+          created_at: string
+          id: string
+        }
+        Insert: {
+          blocked_id: string
+          blocker_id: string
+          created_at?: string
+          id?: string
+        }
+        Update: {
+          blocked_id?: string
+          blocker_id?: string
+          created_at?: string
+          id?: string
+        }
+        Relationships: []
+      }
       circles: {
         Row: {
           connected_profile_id: string
@@ -121,6 +142,59 @@ export type Database = {
           },
         ]
       }
+      events: {
+        Row: {
+          created_at: string
+          creator_id: string
+          description: string | null
+          event_date: string
+          id: string
+          intent: string | null
+          max_participants: number | null
+          room_type: string
+          title: string
+          updated_at: string
+          venue_id: string | null
+          vibe: string | null
+        }
+        Insert: {
+          created_at?: string
+          creator_id: string
+          description?: string | null
+          event_date: string
+          id?: string
+          intent?: string | null
+          max_participants?: number | null
+          room_type: string
+          title: string
+          updated_at?: string
+          venue_id?: string | null
+          vibe?: string | null
+        }
+        Update: {
+          created_at?: string
+          creator_id?: string
+          description?: string | null
+          event_date?: string
+          id?: string
+          intent?: string | null
+          max_participants?: number | null
+          room_type?: string
+          title?: string
+          updated_at?: string
+          venue_id?: string | null
+          vibe?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "events_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           age_band: string
@@ -163,6 +237,33 @@ export type Database = {
           profession?: string
           updated_at?: string
           user_id?: string | null
+        }
+        Relationships: []
+      }
+      room_messages: {
+        Row: {
+          created_at: string
+          id: string
+          message: string
+          profile_id: string
+          room_type: string
+          venue_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          message: string
+          profile_id: string
+          room_type: string
+          venue_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          message?: string
+          profile_id?: string
+          room_type?: string
+          venue_id?: string
         }
         Relationships: []
       }
