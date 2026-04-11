@@ -108,8 +108,13 @@ const ProfileEntry = () => {
         nickname: form.nickname,
         age_band: form.ageBand,
       });
-      saveSessionState({ roomType: roomType!, venueId, step: 'verify', intent: form.intent, vibe: form.vibe });
-      navigate(`/rooms/${roomType}/verify?venue=${venueId}&intent=${encodeURIComponent(form.intent)}&vibe=${encodeURIComponent(form.vibe)}`);
+      if (venueId === 'event') {
+        // Coming from event creation — go back to room page
+        navigate(`/rooms/${roomType}`);
+      } else {
+        saveSessionState({ roomType: roomType!, venueId, step: 'verify', intent: form.intent, vibe: form.vibe });
+        navigate(`/rooms/${roomType}/verify?venue=${venueId}&intent=${encodeURIComponent(form.intent)}&vibe=${encodeURIComponent(form.vibe)}`);
+      }
     } catch (e) {
       console.error(e);
     } finally {
