@@ -58,6 +58,7 @@ const ProfileEntry = () => {
     if (!email || otpSending) return;
     setOtpSending(true);
     setOtpError('');
+    setOtp('');
     try {
       await sendEmailOtp(email);
       setStep('otp');
