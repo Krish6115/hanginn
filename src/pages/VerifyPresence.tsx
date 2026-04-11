@@ -50,7 +50,7 @@ const VerifyPresence = () => {
 
       const dist = getDistanceMeters(pos.coords.latitude, pos.coords.longitude, Number(venue.lat), Number(venue.lng));
 
-      if (dist <= 10) {
+      if (dist <= 50) {
         setState('success');
         setTimeout(() => {
           saveSessionState({ roomType: roomType!, venueId, step: 'room', intent, vibe });
