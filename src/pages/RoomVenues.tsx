@@ -27,7 +27,7 @@ interface EventItem {
 const RoomVenues = () => {
   const { roomType } = useParams<{ roomType: string }>();
   const navigate = useNavigate();
-  const { fetchVenues, currentProfile, authUser } = useHanginnStore();
+  const { fetchVenues, currentProfile } = useHanginnStore();
   const room = ROOMS.find((r) => r.type === roomType);
 
   const [tab, setTab] = useState<'venues' | 'events'>('venues');
@@ -173,7 +173,7 @@ const RoomVenues = () => {
                 <div className="flex flex-col gap-5">
                   {venues.map((venue, i) => (
                     <motion.div key={venue.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}>
-                      <VenueCard venue={venue} onClick={() => navigate(`/rooms/${roomType}/join?venue=${venue.id}`)} />
+                      <VenueCard venue={venue} onClick={() => navigate(`/rooms/${roomType}/verify?venue=${venue.id}`)} />
                     </motion.div>
                   ))}
                 </div>
@@ -184,7 +184,7 @@ const RoomVenues = () => {
               <div className="mb-6">
                 <button
                   onClick={() => {
-                    if (!currentProfile || !authUser) {
+                    if (!currentProfile) {
                       navigate(`/rooms/${roomType}/join?venue=event`);
                       return;
                     }
