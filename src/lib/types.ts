@@ -1,4 +1,4 @@
-export type RoomType = 'social' | 'intellectual' | 'official' | 'play' | 'transit';
+export type RoomType = 'social' | 'intellectual' | 'official' | 'play' | 'transit' | 'residential';
 
 export type PresenceState = 'quiet' | 'flowing' | 'vibrant';
 
@@ -67,6 +67,7 @@ export const ROOMS: Room[] = [
   { type: 'official', label: 'Official', description: 'Work, network, or coordinate', venueLabel: 'Workspaces nearby' },
   { type: 'play', label: 'Play', description: 'Join a game. Find your rhythm', venueLabel: 'Play zones nearby' },
   { type: 'transit', label: 'Transit', description: 'Short conversations while you wait', venueLabel: 'Transit spots nearby' },
+  { type: 'residential', label: 'Residential', description: 'People around you, in your neighborhood', venueLabel: 'Localities near you' },
 ];
 
 export const INTENTS: Record<RoomType, string[]> = {
@@ -75,6 +76,7 @@ export const INTENTS: Record<RoomType, string[]> = {
   official: ['Focused work', 'Quick break', 'Coordinate'],
   transit: ['Network', 'Chill', 'Coordinate'],
   play: ['Join a team', 'Find players', 'Compete'],
+  residential: ['Walk', 'Chill', 'Sports', 'Quick Help'],
 };
 
 export const AGE_BANDS = ['18-22', '23-27', '28-32', '33-40', '40+'];
@@ -100,7 +102,9 @@ export const ICEBREAKERS = [
 ];
 
 export function generateVenueSnapshot(intents: string[], roomType: RoomType): string {
-  if (intents.length === 0) return 'A quiet moment. Be the first to step in.';
+  if (intents.length === 0) {
+    return roomType === 'residential' ? '' : 'A quiet moment. Be the first to step in.';
+  }
 
   const intentCounts: Record<string, number> = {};
   intents.forEach((i) => {
@@ -132,6 +136,9 @@ function describeIntent(intent: string, count: number, roomType: RoomType): stri
     case 'Join a team': return few ? 'A team is warming up' : 'Teams are forming';
     case 'Find players': return few ? 'Players are looking for a match' : 'Players are gathering';
     case 'Compete': return few ? 'A challenge is brewing' : 'Competition is heating up';
+    case 'Walk': return few ? 'A few are out for a walk' : 'Neighbors are walking around';
+    case 'Sports': return few ? 'A few are warming up for sports' : 'A sporty energy is building';
+    case 'Quick Help': return few ? 'Someone nearby could use a hand' : 'Neighbors are helping each other';
     default: return 'Something is happening';
   }
 }

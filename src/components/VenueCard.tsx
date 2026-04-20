@@ -44,12 +44,12 @@ export function VenueCard({ venue, onClick }: VenueCardProps) {
             <span className={`h-2 w-2 rounded-full ${presence.color} animate-pulse-soft`} />
           </span>
         </div>
-        <p className="text-xs text-muted-foreground font-body">{venue.address}</p>
-        {venue.snapshot && (
-          <p className="text-[12px] leading-relaxed text-secondary-foreground font-body font-light italic">
-            {venue.snapshot}
-          </p>
+        {venue.roomType !== 'residential' && (
+          <p className="text-xs text-muted-foreground font-body">{venue.address}</p>
         )}
+        <p className="text-[12px] leading-relaxed text-secondary-foreground font-body font-light italic">
+          {venue.snapshot || (venue.roomType === 'residential' ? 'People around you coordinating' : '')}
+        </p>
       </div>
     </button>
   );

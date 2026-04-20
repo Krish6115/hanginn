@@ -26,6 +26,11 @@ const venueImages: Record<RoomType, string[]> = {
     'https://images.unsplash.com/photo-1530521954074-e64f6810b32d?w=400&h=300&fit=crop',
     'https://images.unsplash.com/photo-1517400508447-f8dd518b86db?w=400&h=300&fit=crop',
   ],
+  residential: [
+    'https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=400&h=300&fit=crop',
+    'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=400&h=300&fit=crop',
+    'https://images.unsplash.com/photo-1449844908441-8829872d2607?w=400&h=300&fit=crop',
+  ],
 };
 
 const venueNames: Record<RoomType, string[]> = {
@@ -34,6 +39,7 @@ const venueNames: Record<RoomType, string[]> = {
   official: ['WeWork Prestige', 'CoLab Studios', 'The Hive Office'],
   play: ['Arena Gaming Zone', 'SportSquare Turf', 'PlayDen Arcade'],
   transit: ['Terminal 2 Lounge', 'SkyWait Cafe', 'Transit Hub Lounge'],
+  residential: ['Phase 3B1', 'Phase 8', 'Sector 34'],
 };
 
 export function getVenuesForRoom(roomType: RoomType): Venue[] {
