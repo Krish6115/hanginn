@@ -1,4 +1,4 @@
-export type RoomType = 'social' | 'intellectual' | 'official' | 'play' | 'transit';
+export type RoomType = 'social' | 'intellectual' | 'official' | 'play' | 'transit' | 'residential';
 
 export type PresenceState = 'quiet' | 'flowing' | 'vibrant';
 
@@ -67,6 +67,7 @@ export const ROOMS: Room[] = [
   { type: 'official', label: 'Official', description: 'Work, network, or coordinate', venueLabel: 'Workspaces nearby' },
   { type: 'play', label: 'Play', description: 'Join a game. Find your rhythm', venueLabel: 'Play zones nearby' },
   { type: 'transit', label: 'Transit', description: 'Short conversations while you wait', venueLabel: 'Transit spots nearby' },
+  { type: 'residential', label: 'Residential', description: 'People around you, in your neighborhood', venueLabel: 'Localities near you' },
 ];
 
 export const INTENTS: Record<RoomType, string[]> = {
@@ -75,6 +76,7 @@ export const INTENTS: Record<RoomType, string[]> = {
   official: ['Focused work', 'Quick break', 'Coordinate'],
   transit: ['Network', 'Chill', 'Coordinate'],
   play: ['Join a team', 'Find players', 'Compete'],
+  residential: ['Walk', 'Chill', 'Sports', 'Quick Help'],
 };
 
 export const AGE_BANDS = ['18-22', '23-27', '28-32', '33-40', '40+'];
