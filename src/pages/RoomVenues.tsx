@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Plus, Calendar } from 'lucide-react';
-import { ROOMS, INTENTS, RoomType, getPresenceState, generateVenueSnapshot, getDistanceMeters } from '@/lib/types';
+import { ArrowLeft, Plus, Calendar, MapPin } from 'lucide-react';
+import { ROOMS, INTENTS, AGE_BANDS, RoomType, getPresenceState, generateVenueSnapshot } from '@/lib/types';
 import { useHanginnStore } from '@/lib/hanginnStore';
 import { VenueCard } from '@/components/VenueCard';
 import { supabase } from '@/integrations/supabase/client';
@@ -24,12 +24,6 @@ interface EventItem {
   creator_photo: string | null;
 }
 
-interface EnrichedVenue extends Venue {
-  peopleCount: number;
-  distanceKm: number | null;
-  isWithin50m: boolean;
-}
-
 const RoomVenues = () => {
   const { roomType } = useParams<{ roomType: string }>();
   const navigate = useNavigate();
@@ -37,12 +31,10 @@ const RoomVenues = () => {
   const room = ROOMS.find((r) => r.type === roomType);
 
   const [tab, setTab] = useState<'venues' | 'events'>('venues');
-  const [venues, setVenues] = useState<EnrichedVenue[]>([]);
+  const [venues, setVenues] = useState<Venue[]>([]);
   const [events, setEvents] = useState<EventItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateEvent, setShowCreateEvent] = useState(false);
-  const [userLat, setUserLat] = useState<number | null>(null);
-  const [userLng, setUserLng] = useState<number | null>(null);
 
   // Touch swipe
   const [touchStart, setTouchStart] = useState(0);
@@ -51,20 +43,6 @@ const RoomVenues = () => {
     if (dir === 'left' && tab === 'venues') setTab('events');
     if (dir === 'right' && tab === 'events') setTab('venues');
   };
-
-  // Get user location on mount
-  useEffect(() => {
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setUserLat(pos.coords.latitude);
-        setUserLng(pos.coords.longitude);
-      },
-      () => {
-        // Location denied or unavailable — still show venues without distance
-      },
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 }
-    );
-  }, []);
 
   useEffect(() => {
     if (!roomType) return;
@@ -83,14 +61,6 @@ const RoomVenues = () => {
           const presence = getPresenceState(count);
           const snapshot = generateVenueSnapshot(intents, roomType as RoomType);
 
-          let distanceKm: number | null = null;
-          let isWithin50m = false;
-          if (userLat !== null && userLng !== null && venue.lat && venue.lng) {
-            const distMeters = getDistanceMeters(userLat, userLng, Number(venue.lat), Number(venue.lng));
-            distanceKm = Math.round(distMeters / 100) / 10; // 1 decimal
-            isWithin50m = distMeters <= 50;
-          }
-
           return {
             id: venue.id,
             name: venue.name,
@@ -101,27 +71,15 @@ const RoomVenues = () => {
             address: venue.address,
             lat: venue.lat ? Number(venue.lat) : undefined,
             lng: venue.lng ? Number(venue.lng) : undefined,
-            peopleCount: count,
-            distanceKm,
-            isWithin50m,
           };
         })
       );
-
-      // Filter to within 2km if we have location, then sort by distance
-      let filtered = enriched;
-      if (userLat !== null && userLng !== null) {
-        filtered = enriched
-          .filter((v) => v.distanceKm !== null && v.distanceKm <= 2)
-          .sort((a, b) => (a.distanceKm ?? 999) - (b.distanceKm ?? 999));
-      }
-
-      setVenues(filtered);
+      setVenues(enriched);
       setLoading(false);
     };
     load();
     loadEvents();
-  }, [roomType, userLat, userLng]);
+  }, [roomType]);
 
   const loadEvents = async () => {
     if (!roomType) return;
@@ -158,21 +116,6 @@ const RoomVenues = () => {
     navigate('/');
     return null;
   }
-
-  const handleVenueClick = (venue: EnrichedVenue) => {
-    if (venue.isWithin50m) {
-      // Within 50m — go to join/verify flow
-      navigate(`/rooms/${roomType}/join?venue=${venue.id}`);
-    }
-    // Outside 50m — just show info, no action
-  };
-
-  const getPresenceLabel = (count: number): string => {
-    if (count === 0) return 'Quiet right now';
-    if (count <= 2) return 'A few people here';
-    if (count <= 5) return 'Comfortably occupied';
-    return 'Buzzing with activity';
-  };
 
   return (
     <div className="min-h-screen bg-background"
@@ -226,26 +169,11 @@ const RoomVenues = () => {
                     <div key={i} className="h-44 rounded-2xl bg-secondary animate-pulse" />
                   ))}
                 </div>
-              ) : venues.length === 0 ? (
-                <div className="text-center py-16">
-                  <p className="text-muted-foreground font-body text-sm">
-                    {userLat === null
-                      ? 'Enable location to discover nearby venues.'
-                      : 'No venues within 2 km right now.'}
-                  </p>
-                </div>
               ) : (
                 <div className="flex flex-col gap-5">
                   {venues.map((venue, i) => (
                     <motion.div key={venue.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}>
-                      <VenueCard
-                        venue={venue}
-                        distanceKm={venue.distanceKm}
-                        peopleCount={venue.peopleCount}
-                        presenceLabel={getPresenceLabel(venue.peopleCount)}
-                        isWithin50m={venue.isWithin50m}
-                        onClick={() => handleVenueClick(venue)}
-                      />
+                      <VenueCard venue={venue} onClick={() => navigate(`/rooms/${roomType}/join?venue=${venue.id}`)} />
                     </motion.div>
                   ))}
                 </div>
