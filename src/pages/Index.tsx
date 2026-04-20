@@ -61,8 +61,10 @@ const Index = () => {
                 const s = savedSession;
                 if (s.step === 'room') {
                   navigate(`/rooms/${s.roomType}/live?venue=${s.venueId}&intent=${encodeURIComponent(s.intent || '')}&vibe=${encodeURIComponent(s.vibe || '')}`);
-                } else {
+                } else if (s.step === 'profile') {
                   navigate(`/rooms/${s.roomType}/join?venue=${s.venueId}`);
+                } else {
+                  navigate(`/rooms/${s.roomType}/verify?venue=${s.venueId}`);
                 }
               }}
               className="mt-2 text-xs text-primary font-body font-medium underline underline-offset-4"
