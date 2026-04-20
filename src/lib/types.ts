@@ -102,7 +102,9 @@ export const ICEBREAKERS = [
 ];
 
 export function generateVenueSnapshot(intents: string[], roomType: RoomType): string {
-  if (intents.length === 0) return 'A quiet moment. Be the first to step in.';
+  if (intents.length === 0) {
+    return roomType === 'residential' ? '' : 'A quiet moment. Be the first to step in.';
+  }
 
   const intentCounts: Record<string, number> = {};
   intents.forEach((i) => {
