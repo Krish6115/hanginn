@@ -5,6 +5,7 @@ import roomIntellectual from '@/assets/room-intellectual.jpg';
 import roomOfficial from '@/assets/room-official.jpg';
 import roomTransit from '@/assets/room-transit.jpg';
 import roomPlay from '@/assets/room-play.jpg';
+import roomResidential from '@/assets/room-residential.jpg';
 
 const ROOM_IMAGES: Record<string, string> = {
   social: roomSocial,
@@ -12,6 +13,7 @@ const ROOM_IMAGES: Record<string, string> = {
   official: roomOfficial,
   transit: roomTransit,
   play: roomPlay,
+  residential: roomResidential,
 };
 
 interface RoomCardProps {

@@ -14,7 +14,7 @@ const trustItems = [
 
 const footerLinks = ['About', 'How it works', 'Safety', 'Terms', 'Blog'];
 
-const ACTIVE_ROOMS: RoomType[] = ['social', 'intellectual', 'official', 'play'];
+const ACTIVE_ROOMS: RoomType[] = ['social', 'intellectual', 'official', 'play', 'residential'];
 
 const Index = () => {
   const navigate = useNavigate();
