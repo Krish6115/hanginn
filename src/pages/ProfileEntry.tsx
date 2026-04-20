@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
@@ -7,19 +7,17 @@ import { Label } from '@/components/ui/label';
 import { AGE_BANDS, INTENTS, RoomType } from '@/lib/types';
 import { useHanginnStore } from '@/lib/hanginnStore';
 
-type Step = 'email' | 'otp' | 'details' | 'intent';
+type Step = 'details' | 'intent';
 
 const ProfileEntry = () => {
   const { roomType } = useParams<{ roomType: string }>();
   const [searchParams] = useSearchParams();
   const venueId = searchParams.get('venue') || '';
   const navigate = useNavigate();
-  const { sendEmailOtp, verifyEmailOtp, upsertProfile, currentProfile, authUser, saveSessionState } = useHanginnStore();
+  const { upsertProfile, currentProfile, saveSessionState } = useHanginnStore();
   const intents = INTENTS[roomType as RoomType] || [];
 
-  const [step, setStep] = useState<Step>('email');
-  const [email, setEmail] = useState('');
-  const [otp, setOtp] = useState('');
+  const [step, setStep] = useState<Step>('details');
   const [form, setForm] = useState({
     nickname: currentProfile?.nickname || '',
     ageBand: currentProfile?.age_band || '',
@@ -27,74 +25,20 @@ const ProfileEntry = () => {
     vibe: '',
   });
   const [submitting, setSubmitting] = useState(false);
-  const [otpSending, setOtpSending] = useState(false);
-  const [otpError, setOtpError] = useState('');
-  const [resendCooldown, setResendCooldown] = useState(0);
-  const otpRef = useRef<HTMLInputElement>(null);
 
+  // If profile already exists in localStorage / store, jump straight to intent
   useEffect(() => {
-    if (authUser && currentProfile) {
+    if (currentProfile?.nickname && currentProfile?.age_band) {
       setStep('intent');
       setForm((f) => ({
         ...f,
-        nickname: currentProfile.nickname || f.nickname,
-        ageBand: currentProfile.age_band || f.ageBand,
+        nickname: currentProfile.nickname,
+        ageBand: currentProfile.age_band,
       }));
-    } else if (authUser) {
-      setStep('details');
-      setEmail(authUser.email || '');
     }
-  }, [authUser, currentProfile]);
-
-  useEffect(() => {
-    if (resendCooldown <= 0) return;
-    const t = setTimeout(() => setResendCooldown((c) => c - 1), 1000);
-    return () => clearTimeout(t);
-  }, [resendCooldown]);
+  }, [currentProfile]);
 
   const update = (key: string, value: string) => setForm((f) => ({ ...f, [key]: value }));
-
-  const handleSendOtp = async () => {
-    if (!email || otpSending) return;
-    setOtpSending(true);
-    setOtpError('');
-    setOtp('');
-    try {
-      await sendEmailOtp(email);
-      setStep('otp');
-      setResendCooldown(60);
-      setTimeout(() => otpRef.current?.focus(), 300);
-    } catch (e: any) {
-      setOtpError(e.message || 'Failed to send code');
-    } finally {
-      setOtpSending(false);
-    }
-  };
-
-  const handleVerifyOtp = async () => {
-    if (!otp || submitting) return;
-    setSubmitting(true);
-    setOtpError('');
-    try {
-      const ok = await verifyEmailOtp(email, otp);
-      if (ok) {
-        if (currentProfile) {
-          setStep('intent');
-          setForm((f) => ({
-            ...f,
-            nickname: currentProfile.nickname || f.nickname,
-            ageBand: currentProfile.age_band || f.ageBand,
-          }));
-        } else {
-          setStep('details');
-        }
-      }
-    } catch (e: any) {
-      setOtpError(e.message || 'Invalid code');
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
   const handleDetailsNext = () => {
     if (form.nickname && form.ageBand) setStep('intent');
@@ -104,12 +48,12 @@ const ProfileEntry = () => {
     if (!form.intent || submitting) return;
     setSubmitting(true);
     try {
-      await upsertProfile(email, {
+      await upsertProfile('', {
         nickname: form.nickname,
         age_band: form.ageBand,
       });
-      saveSessionState({ roomType: roomType!, venueId, step: 'verify', intent: form.intent, vibe: form.vibe });
-      navigate(`/rooms/${roomType}/verify?venue=${venueId}&intent=${encodeURIComponent(form.intent)}&vibe=${encodeURIComponent(form.vibe)}`);
+      saveSessionState({ roomType: roomType!, venueId, step: 'room', intent: form.intent, vibe: form.vibe });
+      navigate(`/rooms/${roomType}/live?venue=${venueId}&intent=${encodeURIComponent(form.intent)}&vibe=${encodeURIComponent(form.vibe)}`);
     } catch (e) {
       console.error(e);
     } finally {
@@ -140,71 +84,6 @@ const ProfileEntry = () => {
           </div>
 
           <AnimatePresence mode="wait">
-            {step === 'email' && (
-              <motion.div key="email" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-5">
-                <div>
-                  <Label className="text-xs text-muted-foreground mb-1.5 block font-body">Email address</Label>
-                  <Input
-                    type="email"
-                    placeholder="you@email.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="bg-secondary border-border"
-                  />
-                </div>
-                {otpError && <p className="text-xs text-destructive font-body">{otpError}</p>}
-                <button
-                  onClick={handleSendOtp}
-                  disabled={!email || otpSending}
-                  className={`w-full rounded-2xl py-4 text-sm font-body font-medium tracking-wide transition-all duration-500 ${
-                    email && !otpSending
-                      ? 'bg-primary/90 text-primary-foreground hover:bg-primary'
-                      : 'bg-secondary text-muted-foreground cursor-not-allowed'
-                  }`}
-                >
-                  {otpSending ? 'Sending...' : 'Continue'}
-                </button>
-              </motion.div>
-            )}
-
-            {step === 'otp' && (
-              <motion.div key="otp" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-5">
-                <div>
-                  <p className="text-sm text-muted-foreground font-body mb-1">We sent a code to <span className="text-foreground">{email}</span></p>
-                  <Label className="text-xs text-muted-foreground mb-1.5 block font-body">Verification code</Label>
-                  <Input
-                    ref={otpRef}
-                    type="text"
-                    inputMode="numeric"
-                    placeholder="Enter 6-digit code"
-                    value={otp}
-                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    maxLength={6}
-                    className="bg-secondary border-border text-center text-lg tracking-[0.3em]"
-                  />
-                </div>
-                {otpError && <p className="text-xs text-destructive font-body">{otpError}</p>}
-                <button
-                  onClick={handleVerifyOtp}
-                  disabled={otp.length < 6 || submitting}
-                  className={`w-full rounded-2xl py-4 text-sm font-body font-medium tracking-wide transition-all duration-500 ${
-                    otp.length >= 6 && !submitting
-                      ? 'bg-primary/90 text-primary-foreground hover:bg-primary'
-                      : 'bg-secondary text-muted-foreground cursor-not-allowed'
-                  }`}
-                >
-                  {submitting ? 'Verifying...' : 'Verify'}
-                </button>
-                <button
-                  onClick={handleSendOtp}
-                  disabled={resendCooldown > 0}
-                  className="w-full text-xs text-muted-foreground hover:text-foreground font-body transition-colors"
-                >
-                  {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend code'}
-                </button>
-              </motion.div>
-            )}
-
             {step === 'details' && (
               <motion.div key="details" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-5">
                 <div>

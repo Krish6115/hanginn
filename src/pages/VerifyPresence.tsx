@@ -2,23 +2,64 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { MapPin } from 'lucide-react';
-import { useHanginnStore } from '@/lib/hanginnStore';
 import { supabase } from '@/integrations/supabase/client';
 import { getDistanceMeters } from '@/lib/types';
+import { useHanginnStore } from '@/lib/hanginnStore';
 
-type VerifyState = 'pre-permission' | 'verifying' | 'success' | 'failed';
+type VerifyState = 'pre-permission' | 'verifying' | 'success' | 'failed' | 'weak-signal';
+
+// Per-room geofence radius (meters)
+const RADIUS_BY_ROOM: Record<string, number> = {
+  residential: 400,
+  social: 50,
+  intellectual: 50,
+  official: 50,
+  play: 50,
+  transit: 50,
+};
 
 const VerifyPresence = () => {
   const { roomType } = useParams<{ roomType: string }>();
   const [searchParams] = useSearchParams();
   const venueId = searchParams.get('venue') || '';
-  const intent = searchParams.get('intent') || '';
-  const vibe = searchParams.get('vibe') || '';
+  const passthroughIntent = searchParams.get('intent') || '';
+  const passthroughVibe = searchParams.get('vibe') || '';
   const navigate = useNavigate();
-  const { currentProfile, saveSessionState } = useHanginnStore();
+  const { saveSessionState, currentProfile } = useHanginnStore();
 
   const [state, setState] = useState<VerifyState>('pre-permission');
   const [errorMsg, setErrorMsg] = useState('');
+
+  // Take up to 5 GPS readings; keep accuracy <= 40m; average best 2-3
+  const collectReadings = async (): Promise<{ lat: number; lng: number } | { weak: true }> => {
+    const valid: { lat: number; lng: number; acc: number }[] = [];
+    for (let i = 0; i < 5; i++) {
+      try {
+        const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0,
+          });
+        });
+        if (pos.coords.accuracy <= 40) {
+          valid.push({
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+            acc: pos.coords.accuracy,
+          });
+        }
+      } catch (e: any) {
+        if (e?.code === 1) throw e; // permission denied — bubble up
+        // timeout / unavailable — keep trying
+      }
+    }
+    if (valid.length < 2) return { weak: true };
+    const best = valid.sort((a, b) => a.acc - b.acc).slice(0, 3);
+    const lat = best.reduce((s, r) => s + r.lat, 0) / best.length;
+    const lng = best.reduce((s, r) => s + r.lng, 0) / best.length;
+    return { lat, lng };
+  };
 
   const verify = async () => {
     setState('verifying');
@@ -31,55 +72,68 @@ const VerifyPresence = () => {
         .eq('id', venueId)
         .single();
 
+      const proceed = () => {
+        if (roomType === 'residential') {
+          // Residential: details come AFTER verification
+          saveSessionState({ roomType: roomType!, venueId, step: 'profile' });
+          if (currentProfile?.nickname && currentProfile?.age_band) {
+            navigate(`/rooms/${roomType}/join?venue=${venueId}`);
+          } else {
+            navigate(`/rooms/${roomType}/join?venue=${venueId}`);
+          }
+        } else {
+          // Other rooms: details came before, go straight to live
+          saveSessionState({ roomType: roomType!, venueId, step: 'room', intent: passthroughIntent, vibe: passthroughVibe });
+          navigate(`/rooms/${roomType}/live?venue=${venueId}&intent=${encodeURIComponent(passthroughIntent)}&vibe=${encodeURIComponent(passthroughVibe)}`);
+        }
+      };
+
+      // No coordinates on venue → allow through
       if (!venue?.lat || !venue?.lng) {
         setState('success');
-        setTimeout(() => {
-          saveSessionState({ roomType: roomType!, venueId, step: 'room', intent, vibe });
-          navigate(`/rooms/${roomType}/live?venue=${venueId}&intent=${encodeURIComponent(intent)}&vibe=${encodeURIComponent(vibe)}`);
-        }, 1200);
+        setTimeout(proceed, 1000);
         return;
       }
 
-      const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: true,
-          timeout: 5000,
-          maximumAge: 0,
-        });
-      });
+      const result = await collectReadings();
+      if ('weak' in result) {
+        setState('weak-signal');
+        setErrorMsg('Location signal is weak. Try moving near a window or open area.');
+        return;
+      }
 
-      const dist = getDistanceMeters(pos.coords.latitude, pos.coords.longitude, Number(venue.lat), Number(venue.lng));
+      const radius = RADIUS_BY_ROOM[roomType || ''] ?? 50;
+      const dist = getDistanceMeters(result.lat, result.lng, Number(venue.lat), Number(venue.lng));
 
-      if (dist <= 50) {
+      if (dist <= radius) {
         setState('success');
-        setTimeout(() => {
-          saveSessionState({ roomType: roomType!, venueId, step: 'room', intent, vibe });
-          navigate(`/rooms/${roomType}/live?venue=${venueId}&intent=${encodeURIComponent(intent)}&vibe=${encodeURIComponent(vibe)}`);
-        }, 1200);
+        setTimeout(proceed, 1000);
       } else {
         setState('failed');
-        setErrorMsg("We couldn't confirm your presence yet. Please ensure GPS is enabled and you are inside the venue.");
+        setErrorMsg(
+          roomType === 'residential'
+            ? "We couldn't confirm your presence in this locality."
+            : "We couldn't confirm your presence yet. Please ensure you are inside the venue and have GPS enabled."
+        );
       }
     } catch (e: any) {
       setState('failed');
-      if (e.code === 1) {
+      if (e?.code === 1) {
         setErrorMsg('Location permission denied. Please enable GPS access in your browser settings.');
-      } else if (e.code === 2) {
-        setErrorMsg("We couldn't confirm your presence yet. Please ensure GPS is enabled and you are inside the venue.");
-      } else if (e.code === 3) {
-        setErrorMsg("We couldn't confirm your presence yet. Please ensure GPS is enabled and you are inside the venue.");
       } else {
-        setErrorMsg("We couldn't confirm your presence yet. Please ensure GPS is enabled and you are inside the venue.");
+        setErrorMsg("We couldn't confirm your presence yet. Please ensure GPS is enabled and try again.");
       }
     }
   };
 
   useEffect(() => {
-    if (!currentProfile) {
-      navigate(`/rooms/${roomType}/join?venue=${venueId}`);
-      return;
-    }
+    // No auth gate — presence is the only gate
   }, []);
+
+  const retry = () => {
+    setErrorMsg('');
+    verify();
+  };
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center px-6">
@@ -92,7 +146,7 @@ const VerifyPresence = () => {
             <div className="space-y-3">
               <p className="font-display text-lg text-foreground">Before you step inside</p>
               <p className="text-sm text-muted-foreground font-body leading-relaxed">
-                We only use your location to confirm you are inside this venue.
+                We only use your location to confirm you are inside this {roomType === 'residential' ? 'locality' : 'venue'}.
               </p>
               <p className="text-xs text-muted-foreground/70 font-body">
                 Your location is not shown publicly.
@@ -125,8 +179,8 @@ const VerifyPresence = () => {
               </div>
             </div>
             <div>
-              <p className="font-display text-lg text-foreground">Verifying presence</p>
-              <p className="text-sm text-muted-foreground font-body mt-2">Confirming you are near this venue</p>
+              <p className="font-display text-lg text-foreground">Verifying your presence</p>
+              <p className="text-sm text-muted-foreground font-body mt-2">A few quiet seconds</p>
             </div>
           </motion.div>
         )}
@@ -137,22 +191,24 @@ const VerifyPresence = () => {
               <MapPin className="h-6 w-6 text-primary" strokeWidth={1.5} />
             </div>
             <p className="font-display text-lg text-foreground">Presence confirmed</p>
-            <p className="text-sm text-muted-foreground font-body">Entering the room...</p>
+            <p className="text-sm text-muted-foreground font-body">Stepping inside…</p>
           </motion.div>
         )}
 
-        {state === 'failed' && (
+        {(state === 'failed' || state === 'weak-signal') && (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
             <div className="mx-auto h-16 w-16 rounded-full bg-secondary flex items-center justify-center">
               <MapPin className="h-6 w-6 text-muted-foreground" strokeWidth={1.5} />
             </div>
             <div>
-              <p className="font-display text-lg text-foreground">We couldn't confirm your presence.</p>
+              <p className="font-display text-lg text-foreground">
+                {state === 'weak-signal' ? 'Weak signal' : "We couldn't confirm your presence."}
+              </p>
               <p className="text-sm text-muted-foreground font-body mt-2">{errorMsg}</p>
             </div>
             <div className="space-y-3">
               <button
-                onClick={verify}
+                onClick={retry}
                 className="w-full rounded-2xl py-3.5 text-sm font-body font-medium bg-primary/90 text-primary-foreground hover:bg-primary transition-all duration-500"
               >
                 Try again
@@ -161,7 +217,7 @@ const VerifyPresence = () => {
                 onClick={() => navigate(`/rooms/${roomType}`)}
                 className="w-full rounded-2xl py-3.5 text-sm font-body text-muted-foreground hover:text-foreground border border-border transition-all duration-500"
               >
-                Scan Table QR
+                Go back
               </button>
             </div>
           </motion.div>
