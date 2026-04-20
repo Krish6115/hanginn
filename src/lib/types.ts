@@ -134,6 +134,9 @@ function describeIntent(intent: string, count: number, roomType: RoomType): stri
     case 'Join a team': return few ? 'A team is warming up' : 'Teams are forming';
     case 'Find players': return few ? 'Players are looking for a match' : 'Players are gathering';
     case 'Compete': return few ? 'A challenge is brewing' : 'Competition is heating up';
+    case 'Walk': return few ? 'A few are out for a walk' : 'Neighbors are walking around';
+    case 'Sports': return few ? 'A few are warming up for sports' : 'A sporty energy is building';
+    case 'Quick Help': return few ? 'Someone nearby could use a hand' : 'Neighbors are helping each other';
     default: return 'Something is happening';
   }
 }
