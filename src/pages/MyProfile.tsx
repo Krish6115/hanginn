@@ -9,7 +9,7 @@ import { useNavigate } from 'react-router-dom';
 
 const MyProfile = () => {
   const navigate = useNavigate();
-  const { currentProfile, updateProfile, signOut, authUser } = useHanginnStore();
+  const { currentProfile, updateProfile, signOut } = useHanginnStore();
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({
     nickname: currentProfile?.nickname || '',
@@ -118,7 +118,7 @@ const MyProfile = () => {
           <div className="text-center">
             <p className="font-display text-xl text-foreground">{currentProfile.nickname}</p>
             <p className="text-xs text-muted-foreground font-body mt-1">{currentProfile.age_band}</p>
-            {authUser?.email && <p className="text-xs text-muted-foreground/60 font-body mt-0.5">{authUser.email}</p>}
+            {currentProfile.email && <p className="text-xs text-muted-foreground/60 font-body mt-0.5">{currentProfile.email}</p>}
           </div>
 
           {!editing ? (
