@@ -8,8 +8,8 @@ import { useHanginnStore } from '@/lib/hanginnStore';
 
 type VerifyState = 'pre-permission' | 'verifying' | 'success' | 'failed' | 'weak-signal';
 
-// Per-room geofence radius (meters)
-const RADIUS_BY_ROOM: Record<string, number> = {
+// Fallback radius (meters) if a venue has no per-venue radius set
+const FALLBACK_RADIUS_BY_ROOM: Record<string, number> = {
   residential: 400,
   social: 50,
   intellectual: 50,
@@ -68,7 +68,7 @@ const VerifyPresence = () => {
     try {
       const { data: venue } = await supabase
         .from('venues')
-        .select('lat, lng, name')
+        .select('lat, lng, name, radius_meters')
         .eq('id', venueId)
         .single();
 
@@ -102,7 +102,8 @@ const VerifyPresence = () => {
         return;
       }
 
-      const radius = RADIUS_BY_ROOM[roomType || ''] ?? 50;
+      const venueRadius = (venue as any).radius_meters ? Number((venue as any).radius_meters) : null;
+      const radius = venueRadius ?? FALLBACK_RADIUS_BY_ROOM[roomType || ''] ?? 50;
       const dist = getDistanceMeters(result.lat, result.lng, Number(venue.lat), Number(venue.lng));
 
       if (dist <= radius) {

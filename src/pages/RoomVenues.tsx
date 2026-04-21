@@ -71,6 +71,7 @@ const RoomVenues = () => {
             address: venue.address,
             lat: venue.lat ? Number(venue.lat) : undefined,
             lng: venue.lng ? Number(venue.lng) : undefined,
+            radius: (venue as any).radius_meters ? Number((venue as any).radius_meters) : undefined,
           };
         })
       );
