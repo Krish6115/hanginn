@@ -327,6 +327,7 @@ export type Database = {
           lat: number | null
           lng: number | null
           name: string
+          radius_meters: number
           room_type: string
         }
         Insert: {
@@ -337,6 +338,7 @@ export type Database = {
           lat?: number | null
           lng?: number | null
           name: string
+          radius_meters?: number
           room_type: string
         }
         Update: {
@@ -347,6 +349,7 @@ export type Database = {
           lat?: number | null
           lng?: number | null
           name?: string
+          radius_meters?: number
           room_type?: string
         }
         Relationships: []

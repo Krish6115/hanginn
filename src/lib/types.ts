@@ -19,6 +19,7 @@ export interface Venue {
   address: string;
   lat?: number;
   lng?: number;
+  radius?: number;
 }
 
 export interface UserProfile {
