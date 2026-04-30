@@ -30,7 +30,75 @@ const VerifyPresence = () => {
   const [state, setState] = useState<VerifyState>('pre-permission');
   const [errorMsg, setErrorMsg] = useState('');
 
-  // Take up to 5 GPS readings; keep accuracy <= 40m; average best 2-3
+  // Live UI-only proximity probe (does NOT gate entry — verify() still owns that)
+  const [probeDistance, setProbeDistance] = useState<number | null>(null);
+  const [probeRadius, setProbeRadius] = useState<number | null>(null);
+  const [probeRoomLabel, setProbeRoomLabel] = useState<string>('Room');
+
+  useEffect(() => {
+    let cancelled = false;
+    let watchId: number | null = null;
+
+    const startProbe = async () => {
+      if (!venueId) return;
+      const { data: venue } = await supabase
+        .from('venues')
+        .select('lat, lng, radius_meters, room_type')
+        .eq('id', venueId)
+        .single();
+      if (cancelled || !venue?.lat || !venue?.lng) return;
+
+      const venueRadius = (venue as any).radius_meters
+        ? Number((venue as any).radius_meters)
+        : null;
+      const radius =
+        venueRadius ?? FALLBACK_RADIUS_BY_ROOM[roomType || ''] ?? 50;
+      setProbeRadius(radius);
+
+      const labelMap: Record<string, string> = {
+        social: 'Social Room',
+        intellectual: 'Intellectual Room',
+        official: 'Official Room',
+        play: 'Play Room',
+        transit: 'Transit Room',
+        residential: 'Residential Room',
+      };
+      setProbeRoomLabel(labelMap[(venue as any).room_type] || labelMap[roomType || ''] || 'Room');
+
+      if (!('geolocation' in navigator)) return;
+      watchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          if (cancelled) return;
+          const d = getDistanceMeters(
+            pos.coords.latitude,
+            pos.coords.longitude,
+            Number(venue.lat),
+            Number(venue.lng)
+          );
+          setProbeDistance(d);
+        },
+        () => {
+          /* silent — probe is best-effort */
+        },
+        { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+      );
+    };
+
+    startProbe();
+    return () => {
+      cancelled = true;
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+    };
+  }, [venueId, roomType]);
+
+  const formatDistance = (m: number) => {
+    if (m < 1000) return `~${Math.round(m)}m`;
+    return `~${(m / 1000).toFixed(1)}km`;
+  };
+
+  const insideZone =
+    probeDistance !== null && probeRadius !== null && probeDistance <= probeRadius;
+
   const collectReadings = async (): Promise<{ lat: number; lng: number } | { weak: true }> => {
     const valid: { lat: number; lng: number; acc: number }[] = [];
     for (let i = 0; i < 5; i++) {
@@ -153,11 +221,42 @@ const VerifyPresence = () => {
                 Your location is not shown publicly.
               </p>
             </div>
+
+            {/* Live proximity indicator (UI-only; geofence logic unchanged) */}
+            <div className="min-h-[1.25rem] flex items-center justify-center">
+              {probeDistance === null ? (
+                <span className="text-xs font-body font-light text-muted-foreground/60">
+                  Sensing your proximity…
+                </span>
+              ) : insideZone ? (
+                <span className="inline-flex items-center gap-1.5 text-xs font-body text-primary">
+                  <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse-soft" />
+                  You have arrived.
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 text-xs font-body font-light text-muted-foreground">
+                  <MapPin className="h-3 w-3" strokeWidth={1.5} />
+                  {formatDistance(probeDistance)} away — Move closer to unlock
+                </span>
+              )}
+            </div>
+
             <button
               onClick={verify}
-              className="w-full rounded-2xl py-3.5 text-sm font-body font-medium bg-primary/90 text-primary-foreground hover:bg-primary transition-all duration-500"
+              disabled={probeDistance !== null && !insideZone}
+              className={
+                insideZone
+                  ? 'w-full rounded-2xl py-3.5 text-sm font-body font-medium bg-primary text-primary-foreground transition-all duration-500 animate-bronze-pulse'
+                  : probeDistance !== null
+                    ? 'w-full rounded-2xl py-3.5 text-sm font-body font-medium bg-secondary text-muted-foreground cursor-not-allowed transition-all duration-500'
+                    : 'w-full rounded-2xl py-3.5 text-sm font-body font-medium bg-primary/90 text-primary-foreground hover:bg-primary transition-all duration-500'
+              }
             >
-              Verify presence
+              {insideZone
+                ? `Tap to enter the ${probeRoomLabel}`
+                : probeDistance !== null
+                  ? 'Move closer to unlock'
+                  : 'Verify presence'}
             </button>
           </motion.div>
         )}
