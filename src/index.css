@@ -98,4 +98,19 @@
     transform: translateY(-2px);
     box-shadow: 0 8px 30px -12px hsl(var(--bronze) / 0.2);
   }
+
+  /* Subtle bronze/espresso pulse for "arrived" CTA */
+  @keyframes bronze-pulse {
+    0%, 100% {
+      box-shadow: 0 0 0 0 hsl(var(--bronze) / 0.45),
+                  0 8px 24px -10px hsl(var(--bronze) / 0.4);
+    }
+    50% {
+      box-shadow: 0 0 0 10px hsl(var(--bronze) / 0),
+                  0 10px 30px -8px hsl(var(--bronze) / 0.55);
+    }
+  }
+  .animate-bronze-pulse {
+    animation: bronze-pulse 2.4s ease-in-out infinite;
+  }
 }
