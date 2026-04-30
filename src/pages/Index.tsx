@@ -99,11 +99,11 @@ const Index = () => {
         </motion.section>
 
         {/* Trust Section */}
-        <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 1, delay: 0.8 }} className="mb-20">
-          <h2 className="font-display text-lg text-foreground mb-6">
+        <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 1, delay: 0.8 }} className="mt-8 mb-28 py-6">
+          <h2 className="font-display text-lg text-foreground mb-8">
             Connect when it feels right.
           </h2>
-          <ul className="space-y-5">
+          <ul className="space-y-7">
             {trustItems.map(({ icon: Icon, text }) => (
               <li key={text} className="flex items-center gap-4">
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border border-border bg-card">
