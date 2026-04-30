@@ -29,7 +29,7 @@ export function RoomCard({ room, onClick, index }: RoomCardProps) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.6 + index * 0.08, duration: 0.7, ease: 'easeOut' }}
       onClick={onClick}
-      className="room-card-hover snap-start shrink-0 w-[150px] flex flex-col items-start gap-0 rounded-2xl border border-border bg-card overflow-hidden text-left cursor-pointer focus:outline-none focus:ring-1 focus:ring-ring"
+      className="room-card-hover snap-center shrink-0 w-[150px] flex flex-col items-start gap-0 rounded-2xl border border-border bg-card overflow-hidden text-left cursor-pointer focus:outline-none focus:ring-1 focus:ring-ring"
     >
       <div className="relative w-full h-[90px] overflow-hidden">
         <img
