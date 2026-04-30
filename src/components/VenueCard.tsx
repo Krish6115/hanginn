@@ -1,4 +1,6 @@
-import { Venue, PresenceState } from '@/lib/types';
+import { useEffect, useState } from 'react';
+import { MapPin } from 'lucide-react';
+import { Venue, PresenceState, getDistanceMeters } from '@/lib/types';
 
 interface VenueCardProps {
   venue: Venue;
@@ -11,8 +13,50 @@ const PRESENCE_CONFIG: Record<PresenceState, { color: string; label: string }> =
   vibrant: { color: 'bg-orange-400/50', label: 'Vibrant' },
 };
 
+const formatDistance = (m: number) =>
+  m < 1000 ? `~${Math.round(m)}m` : `~${(m / 1000).toFixed(1)}km`;
+
 export function VenueCard({ venue, onClick }: VenueCardProps) {
   const presence = PRESENCE_CONFIG[venue.presence];
+
+  // UI-only proximity probe — does NOT gate entry. The verify page still owns the actual
+  // geofence logic. We just surface live distance + a pulsing CTA when inside the radius.
+  const hasGeofence =
+    typeof venue.lat === 'number' &&
+    typeof venue.lng === 'number' &&
+    typeof venue.radius === 'number';
+
+  const [probeDistance, setProbeDistance] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!hasGeofence || !('geolocation' in navigator)) return;
+    let cancelled = false;
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        if (cancelled) return;
+        const d = getDistanceMeters(
+          pos.coords.latitude,
+          pos.coords.longitude,
+          venue.lat as number,
+          venue.lng as number,
+        );
+        setProbeDistance(d);
+      },
+      () => {
+        /* silent — probe is best-effort */
+      },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 },
+    );
+    return () => {
+      cancelled = true;
+      navigator.geolocation.clearWatch(watchId);
+    };
+  }, [hasGeofence, venue.lat, venue.lng]);
+
+  const insideZone =
+    hasGeofence &&
+    probeDistance !== null &&
+    probeDistance <= (venue.radius as number);
 
   return (
     <button
@@ -50,6 +94,28 @@ export function VenueCard({ venue, onClick }: VenueCardProps) {
         <p className="text-[12px] leading-relaxed text-secondary-foreground font-body font-light italic">
           {venue.snapshot || (venue.roomType === 'residential' ? 'People around you coordinating' : '')}
         </p>
+
+        {/* Inline geofence probe — UI only; entry gating still happens on the verify page */}
+        {hasGeofence && (
+          <div className="pt-2">
+            {probeDistance === null ? (
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-body font-light text-muted-foreground/70">
+                <MapPin className="h-3 w-3" strokeWidth={1.5} />
+                Sensing your proximity…
+              </span>
+            ) : insideZone ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-[11px] font-body text-primary animate-bronze-pulse">
+                <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse-soft" />
+                Tap to enter
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-body font-light text-muted-foreground">
+                <MapPin className="h-3 w-3" strokeWidth={1.5} />
+                {formatDistance(probeDistance)} away — Move closer to unlock
+              </span>
+            )}
+          </div>
+        )}
       </div>
     </button>
   );
