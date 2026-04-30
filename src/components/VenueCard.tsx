@@ -25,15 +25,15 @@ export function VenueCard({ venue, onClick }: VenueCardProps) {
             src={venue.image}
             alt={venue.name}
             loading="lazy"
-            className="w-full h-full object-cover opacity-70"
+            className="w-full h-full object-cover opacity-90"
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-card via-card/30 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
           {/* Venue identity marker */}
           <div className="absolute top-3 left-3 flex items-center gap-1.5 rounded-full bg-background/60 backdrop-blur-sm px-2.5 py-1">
             <div className="h-4 w-4 rounded-full bg-secondary flex items-center justify-center">
               <span className="text-[8px] font-display text-foreground">{venue.name[0]}</span>
             </div>
-            <span className="text-[10px] font-body text-foreground/80">{venue.name.split(' ')[0]}</span>
+            <span className="text-[10px] font-body text-foreground">{venue.name.split(' ')[0]}</span>
           </div>
         </div>
       )}
