@@ -91,7 +91,7 @@ const Index = () => {
           <h2 className="font-display text-lg text-foreground mb-5">
             Where should we take you?
           </h2>
-          <div className="flex gap-3 overflow-x-auto pb-4 -mx-6 px-6 scrollbar-hide snap-x snap-mandatory">
+          <div className="flex gap-3 overflow-x-auto pb-4 -mx-6 px-6 scroll-px-6 overscroll-x-contain scrollbar-hide snap-x snap-mandatory">
             {activeRooms.map((room, i) => (
               <RoomCard key={room.type} room={room} index={i} onClick={() => handleSelect(room.type)} />
             ))}
