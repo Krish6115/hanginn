@@ -8,7 +8,7 @@ interface VenueCardProps {
 }
 
 const PRESENCE_CONFIG: Record<PresenceState, { color: string; label: string; vibe: string; dot: string }> = {
-  quiet: { color: 'bg-foreground/60', label: 'Quiet presence', vibe: 'Calm', dot: 'bg-warm-cream/70' },
+  quiet: { color: 'bg-foreground/60', label: 'Quiet presence', vibe: 'Calm', dot: 'bg-warm/70' },
   flowing: { color: 'bg-blue-400/50', label: 'Flowing', vibe: 'Cozy', dot: 'bg-bronze-light' },
   vibrant: { color: 'bg-orange-400/50', label: 'Vibrant', vibe: 'Lively', dot: 'bg-bronze' },
 };
