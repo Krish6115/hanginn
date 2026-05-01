@@ -48,6 +48,14 @@ const DigitalRoom = () => {
   const [sessionId, setSessionId] = useState(currentSessionId);
   const [loading, setLoading] = useState(true);
   const [showReciprocity, setShowReciprocity] = useState(false);
+  const [venueName, setVenueName] = useState<string>('');
+
+  useEffect(() => {
+    if (!venueId) return;
+    supabase.from('venues').select('name').eq('id', venueId).maybeSingle().then(({ data }) => {
+      if (data?.name) setVenueName(data.name);
+    });
+  }, [venueId]);
 
   const [anchorDialog, setAnchorDialog] = useState<string | null>(null);
   const [selectedAnchor, setSelectedAnchor] = useState('');
