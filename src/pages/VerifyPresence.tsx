@@ -257,21 +257,40 @@ const VerifyPresence = () => {
             </div>
 
             <button
-              onClick={verify}
-              disabled={probeDistance !== null && !insideZone}
+              onClick={handleVerifyPress}
+              disabled={
+                buttonPhase !== 'idle' ||
+                (probeDistance !== null && !insideZone)
+              }
               className={
-                insideZone
-                  ? 'w-full rounded-2xl py-3.5 text-sm font-body font-medium bg-primary text-primary-foreground transition-all duration-500 animate-bronze-pulse'
-                  : probeDistance !== null
-                    ? 'w-full rounded-2xl py-3.5 text-sm font-body font-medium bg-secondary text-muted-foreground cursor-not-allowed transition-all duration-500'
-                    : 'w-full rounded-2xl py-3.5 text-sm font-body font-medium bg-primary/90 text-primary-foreground hover:bg-primary transition-all duration-500'
+                buttonPhase === 'loading'
+                  ? 'w-full rounded-2xl py-3.5 text-sm font-body font-medium bg-charcoal-deep text-muted-foreground cursor-not-allowed transition-all duration-500 inline-flex items-center justify-center gap-2'
+                  : buttonPhase === 'confirmed'
+                    ? 'w-full rounded-2xl py-3.5 text-sm font-body font-medium bg-primary text-primary-foreground transition-all duration-500 inline-flex items-center justify-center gap-2'
+                    : insideZone
+                      ? 'w-full rounded-2xl py-3.5 text-sm font-body font-medium bg-primary text-primary-foreground transition-all duration-500 animate-bronze-pulse'
+                      : probeDistance !== null
+                        ? 'w-full rounded-2xl py-3.5 text-sm font-body font-medium bg-secondary text-muted-foreground cursor-not-allowed transition-all duration-500'
+                        : 'w-full rounded-2xl py-3.5 text-sm font-body font-medium bg-primary/90 text-primary-foreground hover:bg-primary transition-all duration-500'
               }
             >
-              {insideZone
-                ? `Tap to enter the ${probeRoomLabel}`
-                : probeDistance !== null
-                  ? 'Move closer to unlock'
-                  : 'Verify presence'}
+              {buttonPhase === 'loading' ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.5} />
+                  Verifying coordinates…
+                </>
+              ) : buttonPhase === 'confirmed' ? (
+                <>
+                  <Check className="h-4 w-4" strokeWidth={2} />
+                  Confirmed
+                </>
+              ) : insideZone ? (
+                `Tap to enter the ${probeRoomLabel}`
+              ) : probeDistance !== null ? (
+                'Move closer to unlock'
+              ) : (
+                'Verify presence'
+              )}
             </button>
           </motion.div>
         )}
