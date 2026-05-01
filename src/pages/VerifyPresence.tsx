@@ -30,6 +30,7 @@ const VerifyPresence = () => {
 
   const [state, setState] = useState<VerifyState>('pre-permission');
   const [errorMsg, setErrorMsg] = useState('');
+  const [buttonPhase, setButtonPhase] = useState<ButtonPhase>('idle');
 
   // Live UI-only proximity probe (does NOT gate entry — verify() still owns that)
   const [probeDistance, setProbeDistance] = useState<number | null>(null);
