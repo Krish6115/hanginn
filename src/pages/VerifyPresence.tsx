@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { MapPin } from 'lucide-react';
+import { MapPin, Loader2, Check } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { getDistanceMeters } from '@/lib/types';
 import { useHanginnStore } from '@/lib/hanginnStore';
 
 type VerifyState = 'pre-permission' | 'verifying' | 'success' | 'failed' | 'weak-signal';
+type ButtonPhase = 'idle' | 'loading' | 'confirmed';
 
 // Fallback radius (meters) if a venue has no per-venue radius set
 const FALLBACK_RADIUS_BY_ROOM: Record<string, number> = {
@@ -29,6 +30,7 @@ const VerifyPresence = () => {
 
   const [state, setState] = useState<VerifyState>('pre-permission');
   const [errorMsg, setErrorMsg] = useState('');
+  const [buttonPhase, setButtonPhase] = useState<ButtonPhase>('idle');
 
   // Live UI-only proximity probe (does NOT gate entry — verify() still owns that)
   const [probeDistance, setProbeDistance] = useState<number | null>(null);
@@ -199,8 +201,21 @@ const VerifyPresence = () => {
     // No auth gate — presence is the only gate
   }, []);
 
+  // Premium verification sequence — UI-only delay before invoking verify().
+  // Does NOT change geofence logic; verify() is still the actual gate.
+  const handleVerifyPress = async () => {
+    if (buttonPhase !== 'idle') return;
+    setButtonPhase('loading');
+    await new Promise((r) => setTimeout(r, 1500));
+    setButtonPhase('confirmed');
+    await new Promise((r) => setTimeout(r, 500));
+    setButtonPhase('idle');
+    verify();
+  };
+
   const retry = () => {
     setErrorMsg('');
+    setButtonPhase('idle');
     verify();
   };
 
@@ -242,21 +257,40 @@ const VerifyPresence = () => {
             </div>
 
             <button
-              onClick={verify}
-              disabled={probeDistance !== null && !insideZone}
+              onClick={handleVerifyPress}
+              disabled={
+                buttonPhase !== 'idle' ||
+                (probeDistance !== null && !insideZone)
+              }
               className={
-                insideZone
-                  ? 'w-full rounded-2xl py-3.5 text-sm font-body font-medium bg-primary text-primary-foreground transition-all duration-500 animate-bronze-pulse'
-                  : probeDistance !== null
-                    ? 'w-full rounded-2xl py-3.5 text-sm font-body font-medium bg-secondary text-muted-foreground cursor-not-allowed transition-all duration-500'
-                    : 'w-full rounded-2xl py-3.5 text-sm font-body font-medium bg-primary/90 text-primary-foreground hover:bg-primary transition-all duration-500'
+                buttonPhase === 'loading'
+                  ? 'w-full rounded-2xl py-3.5 text-sm font-body font-medium bg-charcoal-deep text-muted-foreground cursor-not-allowed transition-all duration-500 inline-flex items-center justify-center gap-2'
+                  : buttonPhase === 'confirmed'
+                    ? 'w-full rounded-2xl py-3.5 text-sm font-body font-medium bg-primary text-primary-foreground transition-all duration-500 inline-flex items-center justify-center gap-2'
+                    : insideZone
+                      ? 'w-full rounded-2xl py-3.5 text-sm font-body font-medium bg-primary text-primary-foreground transition-all duration-500 animate-bronze-pulse'
+                      : probeDistance !== null
+                        ? 'w-full rounded-2xl py-3.5 text-sm font-body font-medium bg-secondary text-muted-foreground cursor-not-allowed transition-all duration-500'
+                        : 'w-full rounded-2xl py-3.5 text-sm font-body font-medium bg-primary/90 text-primary-foreground hover:bg-primary transition-all duration-500'
               }
             >
-              {insideZone
-                ? `Tap to enter the ${probeRoomLabel}`
-                : probeDistance !== null
-                  ? 'Move closer to unlock'
-                  : 'Verify presence'}
+              {buttonPhase === 'loading' ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.5} />
+                  Verifying coordinates…
+                </>
+              ) : buttonPhase === 'confirmed' ? (
+                <>
+                  <Check className="h-4 w-4" strokeWidth={2} />
+                  Confirmed
+                </>
+              ) : insideZone ? (
+                `Tap to enter the ${probeRoomLabel}`
+              ) : probeDistance !== null ? (
+                'Move closer to unlock'
+              ) : (
+                'Verify presence'
+              )}
             </button>
           </motion.div>
         )}

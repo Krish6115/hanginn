@@ -7,10 +7,10 @@ interface VenueCardProps {
   onClick: () => void;
 }
 
-const PRESENCE_CONFIG: Record<PresenceState, { color: string; label: string }> = {
-  quiet: { color: 'bg-foreground/60', label: 'Quiet presence' },
-  flowing: { color: 'bg-blue-400/50', label: 'Flowing' },
-  vibrant: { color: 'bg-orange-400/50', label: 'Vibrant' },
+const PRESENCE_CONFIG: Record<PresenceState, { color: string; label: string; vibe: string; dot: string }> = {
+  quiet: { color: 'bg-foreground/60', label: 'Quiet presence', vibe: 'Calm', dot: 'bg-warm/70' },
+  flowing: { color: 'bg-blue-400/50', label: 'Flowing', vibe: 'Cozy', dot: 'bg-bronze-light' },
+  vibrant: { color: 'bg-orange-400/50', label: 'Vibrant', vibe: 'Lively', dot: 'bg-bronze' },
 };
 
 const formatDistance = (m: number) =>
@@ -86,6 +86,12 @@ export function VenueCard({ venue, onClick }: VenueCardProps) {
           <h3 className="font-display text-lg text-foreground truncate flex-1">{venue.name}</h3>
           <span className="flex items-center gap-1.5 shrink-0">
             <span className={`h-2 w-2 rounded-full ${presence.color} animate-pulse-soft`} />
+          </span>
+        </div>
+        <div>
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-secondary/40 px-2.5 py-0.5 text-[10px] font-body font-light text-secondary-foreground tracking-wide">
+            <span className={`h-1.5 w-1.5 rounded-full ${presence.dot} animate-pulse-soft`} />
+            Vibe: {presence.vibe}
           </span>
         </div>
         {venue.roomType !== 'residential' && (
