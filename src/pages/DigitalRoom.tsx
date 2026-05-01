@@ -387,57 +387,68 @@ const DigitalRoom = () => {
           ) : (
             <motion.div key="chat" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="flex flex-col" style={{ minHeight: 'calc(100vh - 220px)' }}>
-              <div className="flex items-center justify-between mb-4">
-                <p className="text-xs text-muted-foreground font-body font-light italic">
-                  Use this space to coordinate. Keep it light.
+              <div className="flex items-center justify-between mb-5">
+                <p className="text-[11px] text-muted-foreground/70 font-body font-light italic tracking-wide">
+                  An open thread for the room. Speak softly.
                 </p>
-                <div className="flex gap-2">
+                <div className="flex gap-1.5">
                   <button onClick={() => setChatMuted(!chatMuted)}
-                    className={`p-1.5 rounded-full transition-colors ${chatMuted ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}>
+                    className={`p-1.5 rounded-full transition-colors ${chatMuted ? 'text-bronze' : 'text-muted-foreground/70 hover:text-foreground'}`}>
                     <VolumeX className="h-3.5 w-3.5" />
                   </button>
-                  <button className="p-1.5 rounded-full text-muted-foreground hover:text-foreground transition-colors">
+                  <button className="p-1.5 rounded-full text-muted-foreground/70 hover:text-foreground transition-colors">
                     <Flag className="h-3.5 w-3.5" />
                   </button>
                 </div>
               </div>
 
-              <div className="flex-1 space-y-3 mb-4 overflow-y-auto max-h-[50vh]">
+              <div className="flex-1 mb-4 overflow-y-auto max-h-[50vh] pr-1">
                 {messages.length === 0 ? (
-                  <p className="text-center text-xs text-muted-foreground/60 font-body py-12">No messages yet</p>
+                  <div className="text-center py-16 space-y-2">
+                    <p className="font-display text-base text-foreground/80">The room is quiet.</p>
+                    <p className="text-xs text-muted-foreground/60 font-body font-light italic">
+                      Be the first to break the silence.
+                    </p>
+                  </div>
                 ) : (
-                  messages.map((msg) => {
-                    const isMe = msg.profile_id === currentProfile?.id;
-                    return (
-                      <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`max-w-[75%] rounded-2xl px-4 py-2.5 ${
-                          isMe ? 'bg-primary/10 text-foreground' : 'bg-secondary text-foreground'
-                        }`}>
-                          {!isMe && <p className="text-[10px] text-muted-foreground font-body mb-0.5">{msg.nickname}</p>}
-                          <p className="text-sm font-body">{msg.message}</p>
+                  <div className="divide-y divide-border/30">
+                    {messages.map((msg) => {
+                      const isMe = msg.profile_id === currentProfile?.id;
+                      return (
+                        <div key={msg.id} className="py-3 first:pt-0">
+                          <p className="text-sm font-body text-foreground leading-relaxed">
+                            <span className={`font-semibold tracking-wide ${isMe ? 'text-bronze' : 'text-foreground'}`}>
+                              {isMe ? 'You' : msg.nickname}
+                            </span>
+                            <span className="text-muted-foreground/50 mx-2">·</span>
+                            <span className="text-foreground/90">{msg.message}</span>
+                          </p>
                         </div>
-                      </div>
-                    );
-                  })
+                      );
+                    })}
+                  </div>
                 )}
                 <div ref={chatEndRef} />
               </div>
 
-              <div className="flex gap-2">
-                <Input
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                  placeholder="Say something..."
-                  className="bg-secondary border-border flex-1"
-                />
-                <button
-                  onClick={handleSendMessage}
-                  disabled={!chatInput.trim()}
-                  className="h-10 w-10 rounded-full bg-primary/90 text-primary-foreground flex items-center justify-center hover:bg-primary transition-colors disabled:opacity-40"
-                >
-                  <SendIcon className="h-4 w-4" />
-                </button>
+              <div className="sticky bottom-0 -mx-6 px-6 pt-3 pb-4 bg-gradient-to-t from-background via-background to-background/80 border-t border-border/40">
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                    placeholder="Say something to the room..."
+                    className="bg-secondary/60 border-border/50 flex-1 rounded-full px-5 h-11 font-body text-sm placeholder:text-muted-foreground/50 placeholder:italic focus-visible:ring-bronze/30"
+                  />
+                  <button
+                    onClick={handleSendMessage}
+                    disabled={!chatInput.trim()}
+                    className="h-11 w-11 rounded-full bg-secondary/60 text-muted-foreground hover:text-bronze hover:bg-secondary transition-all flex items-center justify-center disabled:opacity-30 disabled:hover:text-muted-foreground"
+                    aria-label="Send"
+                  >
+                    <SendIcon className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
             </motion.div>
           )}
