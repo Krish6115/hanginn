@@ -88,6 +88,12 @@ export function VenueCard({ venue, onClick }: VenueCardProps) {
             <span className={`h-2 w-2 rounded-full ${presence.color} animate-pulse-soft`} />
           </span>
         </div>
+        <div>
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-secondary/40 px-2.5 py-0.5 text-[10px] font-body font-light text-secondary-foreground tracking-wide">
+            <span className={`h-1.5 w-1.5 rounded-full ${presence.dot} animate-pulse-soft`} />
+            Vibe: {presence.vibe}
+          </span>
+        </div>
         {venue.roomType !== 'residential' && (
           <p className="text-xs text-muted-foreground font-body">{venue.address}</p>
         )}
