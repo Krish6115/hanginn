@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { MapPin } from 'lucide-react';
+import { MapPin, Loader2, Check } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { getDistanceMeters } from '@/lib/types';
 import { useHanginnStore } from '@/lib/hanginnStore';
