@@ -7,6 +7,7 @@ import { getDistanceMeters } from '@/lib/types';
 import { useHanginnStore } from '@/lib/hanginnStore';
 
 type VerifyState = 'pre-permission' | 'verifying' | 'success' | 'failed' | 'weak-signal';
+type ButtonPhase = 'idle' | 'loading' | 'confirmed';
 
 // Fallback radius (meters) if a venue has no per-venue radius set
 const FALLBACK_RADIUS_BY_ROOM: Record<string, number> = {
