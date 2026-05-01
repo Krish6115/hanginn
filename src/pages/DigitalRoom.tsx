@@ -272,20 +272,28 @@ const DigitalRoom = () => {
         .protected-room img { pointer-events: none; -webkit-touch-callout: none; }
       `}</style>
 
-      <header className="sticky top-0 z-10 bg-background/80 backdrop-blur-md border-b border-border px-6 py-4">
+      <header className="sticky top-0 z-20 bg-background/85 backdrop-blur-xl border-b border-border/60 px-6 py-4">
         <div className="max-w-lg mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button onClick={() => { if (sessionId) leaveRoom(sessionId); navigate('/'); }} className="text-muted-foreground hover:text-foreground transition-colors">
+          <div className="flex items-center gap-3 min-w-0">
+            <button onClick={() => { if (sessionId) leaveRoom(sessionId); navigate('/'); }} className="text-muted-foreground hover:text-foreground transition-colors shrink-0">
               <ArrowLeft className="h-5 w-5" />
             </button>
-            <div>
-              <h2 className="font-display text-lg text-foreground">{room.label}</h2>
-              <p className="text-xs text-muted-foreground font-body">
-                {sessions.length === 0 ? 'Just you for now' : sessions.length === 1 ? 'Someone else is here' : 'A few people are here'}
-              </p>
+            <div className="min-w-0">
+              <h2 className="font-display text-base text-foreground truncate tracking-wide">
+                {venueName ? <>{venueName} <span className="text-muted-foreground/60 mx-1">·</span> <span className="text-foreground/80">{room.label}</span></> : room.label}
+              </h2>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-bronze/60 opacity-70" />
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-bronze" />
+                </span>
+                <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground/80 font-body">
+                  {sessions.length === 0 ? 'Quiet · just you' : sessions.length === 1 ? 'Live · someone is here' : `Live · a few inside`}
+                </p>
+              </div>
             </div>
           </div>
-          <button onClick={handleSnooze} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground font-body rounded-full border border-border px-3 py-1.5 transition-colors">
+          <button onClick={handleSnooze} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground font-body rounded-full border border-border/60 px-3 py-1.5 transition-colors shrink-0">
             {snoozed ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
             {snoozed ? 'Go active' : 'Snooze'}
           </button>
