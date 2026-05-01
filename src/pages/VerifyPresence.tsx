@@ -201,8 +201,21 @@ const VerifyPresence = () => {
     // No auth gate — presence is the only gate
   }, []);
 
+  // Premium verification sequence — UI-only delay before invoking verify().
+  // Does NOT change geofence logic; verify() is still the actual gate.
+  const handleVerifyPress = async () => {
+    if (buttonPhase !== 'idle') return;
+    setButtonPhase('loading');
+    await new Promise((r) => setTimeout(r, 1500));
+    setButtonPhase('confirmed');
+    await new Promise((r) => setTimeout(r, 500));
+    setButtonPhase('idle');
+    verify();
+  };
+
   const retry = () => {
     setErrorMsg('');
+    setButtonPhase('idle');
     verify();
   };
 
