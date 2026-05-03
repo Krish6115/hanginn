@@ -73,6 +73,13 @@ const VerifyPresence = () => {
 
       if (!venue) return;
 
+      // TEMP MOCK FOR LOCAL TESTING
+      if (venueId === '13af2c4b-9c3b-4e69-b3cd-8a692fba89ab') {
+        venue.lat = 12.9753;
+        venue.lng = 77.6010;
+        venue.radius_meters = 150;
+      }
+
       setVenueData(venue);
       const radius = venue.radius_meters || FALLBACK_RADIUS_BY_ROOM[roomType || ''] || 50;
       setProbeRadius(radius);
@@ -108,6 +115,13 @@ const VerifyPresence = () => {
         .eq('id', venueId)
         .single();
 
+      // TEMP MOCK FOR LOCAL TESTING
+      if (venueId === '13af2c4b-9c3b-4e69-b3cd-8a692fba89ab' && venue) {
+        venue.lat = 12.9753;
+        venue.lng = 77.6010;
+        venue.radius_meters = 150;
+      }
+
       const proceed = () => {
         if (roomType === 'residential') {
           saveSessionState({ roomType: roomType!, venueId, step: 'profile', geofenceVerified: true });
@@ -126,6 +140,13 @@ const VerifyPresence = () => {
       if (venue?.lat === null || venue?.lng === null || venue?.lat === undefined || venue?.lng === undefined) {
         setState('failed');
         setErrorMsg('Venue coordinates missing. Cannot verify presence.');
+        return;
+      }
+
+      // If the passive probe already confirmed presence, skip the secondary hardware check!
+      if (insideZone && probeDistance !== null) {
+        setState('success');
+        setTimeout(proceed, 1000);
         return;
       }
 

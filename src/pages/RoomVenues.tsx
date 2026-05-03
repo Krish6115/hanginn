@@ -61,6 +61,13 @@ const RoomVenues = () => {
           const presence = getPresenceState(count);
           const snapshot = generateVenueSnapshot(intents, roomType as RoomType);
 
+          // TEMP MOCK FOR LOCAL TESTING
+          if (venue.id === '13af2c4b-9c3b-4e69-b3cd-8a692fba89ab') {
+            venue.lat = 12.9753;
+            venue.lng = 77.6010;
+            (venue as any).radius_meters = 150;
+          }
+
           return {
             id: venue.id,
             name: venue.name,
