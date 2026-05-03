@@ -5,9 +5,9 @@ import { MapPin, Loader2, Check } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { getDistanceMeters } from '@/lib/types';
 import { useHanginnStore } from '@/lib/hanginnStore';
-import { useGeolocation, distanceTo, collectAccurateReadings } from '@/hooks/useGeolocation';
+import { useGeolocation, distanceTo, warmUpGeolocation } from '@/hooks/useGeolocation';
 
-type VerifyState = 'pre-permission' | 'verifying' | 'success' | 'failed' | 'weak-signal';
+type VerifyState = 'pre-permission' | 'warming-up' | 'verifying' | 'success' | 'failed' | 'weak-signal';
 type ButtonPhase = 'idle' | 'loading' | 'confirmed';
 
 // Fallback radius (meters) if a venue has no per-venue radius set
@@ -44,12 +44,13 @@ const VerifyPresence = () => {
   const passthroughIntent = searchParams.get('intent') || '';
   const passthroughVibe = searchParams.get('vibe') || '';
   const navigate = useNavigate();
-  const { saveSessionState, currentProfile } = useHanginnStore();
+  const { saveSessionState } = useHanginnStore();
 
   const [state, setState] = useState<VerifyState>('pre-permission');
   const [errorMsg, setErrorMsg] = useState('');
   const [buttonPhase, setButtonPhase] = useState<ButtonPhase>('idle');
   const [retryCount, setRetryCount] = useState(0);
+  const [currentAccuracy, setCurrentAccuracy] = useState<number | null>(null);
 
   // Venue data
   const [venueData, setVenueData] = useState<VenueGeoData | null>(null);
@@ -95,8 +96,9 @@ const VerifyPresence = () => {
   };
 
   const verify = async () => {
-    setState('verifying');
+    setState('warming-up');
     setErrorMsg('');
+    setCurrentAccuracy(null);
 
     try {
       // Refetch venue data for the actual verification (not cached probe)
@@ -108,11 +110,9 @@ const VerifyPresence = () => {
 
       const proceed = () => {
         if (roomType === 'residential') {
-          // Residential: details come AFTER verification
           saveSessionState({ roomType: roomType!, venueId, step: 'profile', geofenceVerified: true });
           navigate(`/rooms/${roomType}/join?venue=${venueId}`);
         } else {
-          // Other rooms: details came before, go straight to live
           saveSessionState({
             roomType: roomType!, venueId, step: 'room',
             intent: passthroughIntent, vibe: passthroughVibe,
@@ -129,11 +129,22 @@ const VerifyPresence = () => {
         return;
       }
 
-      const result = await collectAccurateReadings();
+      // Warm up GPS hardware for up to 7 seconds to improve indoor accuracy
+      const result = await warmUpGeolocation({
+        maxWaitMs: 7000,
+        desiredAccuracy: 60,
+        onProgress: (acc) => setCurrentAccuracy(Math.round(acc)),
+      });
+
+      setState('verifying');
 
       if ('weak' in result) {
         setState('weak-signal');
-        setErrorMsg('Location signal is weak. Try moving near a window or open area.');
+        setErrorMsg(
+          result.bestAcc 
+            ? `Location signal is weak (${result.bestAcc}m accuracy). Try moving near a window or open area.` 
+            : 'Location signal is weak. Try moving near a window or open area.'
+        );
         return;
       }
 
@@ -207,7 +218,7 @@ const VerifyPresence = () => {
               </p>
             </div>
 
-            {/* Live proximity indicator (UI-only; geofence logic unchanged) */}
+            {/* Live proximity indicator */}
             <div className="min-h-[1.25rem] flex items-center justify-center">
               {probeDistance === null ? (
                 <span className="text-xs font-body font-light text-muted-foreground/60">
@@ -262,6 +273,29 @@ const VerifyPresence = () => {
                 'Verify presence'
               )}
             </button>
+          </motion.div>
+        )}
+
+        {state === 'warming-up' && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
+            <div className="relative mx-auto h-24 w-24">
+              <motion.div
+                className="absolute inset-0 rounded-full border-2 border-primary/30"
+                animate={{ scale: [1.2, 1, 1.2], opacity: [0.3, 0.6, 0.3] }}
+                transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+              />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <Loader2 className="h-8 w-8 text-primary animate-spin" strokeWidth={1.5} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <p className="font-display text-lg text-foreground">Warming up GPS…</p>
+              <p className="text-sm text-muted-foreground font-body">
+                {currentAccuracy 
+                  ? `Optimizing signal (${currentAccuracy}m accuracy)`
+                  : 'Finding your location'}
+              </p>
+            </div>
           </motion.div>
         )}
 

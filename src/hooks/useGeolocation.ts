@@ -189,42 +189,65 @@ function getDistanceMetersRaw(lat1: number, lng1: number, lat2: number, lng2: nu
 }
 
 /**
- * Collects multiple GPS readings and returns the averaged best ones.
- * Used by the VerifyPresence page for more accurate verification.
+ * Warms up the GPS hardware using watchPosition to converge on a better accuracy reading.
+ * Essential for indoor use where the initial fix is often very poor.
  */
-export async function collectAccurateReadings(
-  readingCount = 5,
-  maxAccuracy = 40,
-): Promise<{ lat: number; lng: number } | { weak: true }> {
-  const valid: { lat: number; lng: number; acc: number }[] = [];
+export async function warmUpGeolocation(options: {
+  maxWaitMs?: number;
+  desiredAccuracy?: number;
+  onProgress?: (accuracy: number) => void;
+} = {}): Promise<{ lat: number; lng: number; acc: number } | { weak: true; bestAcc: number | null }> {
+  const { maxWaitMs = 7000, desiredAccuracy = 60, onProgress } = options;
 
-  for (let i = 0; i < readingCount; i++) {
-    try {
-      const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 0,
-        });
-      });
+  return new Promise((resolve, reject) => {
+    let bestReading: { lat: number; lng: number; acc: number } | null = null;
+    let watchId: number | null = null;
 
-      if (pos.coords.accuracy <= maxAccuracy) {
-        valid.push({
+    const cleanup = () => {
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+    };
+
+    const timeoutId = setTimeout(() => {
+      cleanup();
+      if (bestReading && bestReading.acc <= desiredAccuracy * 2) {
+        // If we didn't hit desired accuracy but have something reasonable, take it
+        resolve(bestReading);
+      } else {
+        resolve({ weak: true, bestAcc: bestReading?.acc || null });
+      }
+    }, maxWaitMs);
+
+    watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        const acc = pos.coords.accuracy;
+        const current = {
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
-          acc: pos.coords.accuracy,
-        });
-      }
-    } catch (e: any) {
-      if (e?.code === 1) throw e; // Permission denied — bubble up
-      // Timeout / unavailable — keep trying
-    }
-  }
+          acc: acc,
+        };
 
-  if (valid.length < 2) return { weak: true };
+        if (onProgress) onProgress(acc);
 
-  const best = valid.sort((a, b) => a.acc - b.acc).slice(0, 3);
-  const lat = best.reduce((s, r) => s + r.lat, 0) / best.length;
-  const lng = best.reduce((s, r) => s + r.lng, 0) / best.length;
-  return { lat, lng };
+        if (!bestReading || acc < bestReading.acc) {
+          bestReading = current;
+        }
+
+        // If we hit our desired accuracy, resolve immediately
+        if (acc <= desiredAccuracy) {
+          clearTimeout(timeoutId);
+          cleanup();
+          resolve(current);
+        }
+      },
+      (err) => {
+        if (err.code === err.PERMISSION_DENIED) {
+          clearTimeout(timeoutId);
+          cleanup();
+          reject(err);
+        }
+        // Other errors (timeout/unavailable) we ignore and wait for next watch tick
+      },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: maxWaitMs }
+    );
+  });
 }
