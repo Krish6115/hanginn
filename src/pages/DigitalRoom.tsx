@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ROOMS, RoomUser, PresenceState } from '@/lib/types';
+import { ROOMS, INTENTS, RoomUser, PresenceState, RoomType } from '@/lib/types';
 import { useHanginnStore } from '@/lib/hanginnStore';
 import { supabase } from '@/integrations/supabase/client';
 import type { Tables } from '@/integrations/supabase/types';
@@ -47,8 +47,8 @@ const DigitalRoom = () => {
   
   // Venue state
   const [venueName, setVenueName] = useState('');
-  const [roomDef, setRoomDef] = useState(ROOM_TYPES[0]);
-  const [selectedIntent, setSelectedIntent] = useState(initialIntent || ROOM_TYPES[0].intents[0]);
+  const [roomDef, setRoomDef] = useState(ROOMS[0]);
+  const [selectedIntent, setSelectedIntent] = useState(initialIntent || INTENTS[ROOMS[0].type][0]);
 
   // Dialog state
   const [anchorDialog, setAnchorDialog] = useState<string | null>(null); // profileId of person we're connecting with
@@ -78,12 +78,12 @@ const DigitalRoom = () => {
       setVenueName(venue.name);
       const def = ROOMS.find((r) => r.type === venue.room_type) || ROOMS[0];
       setRoomDef(def);
-      if (!initialIntent) setSelectedIntent(def.intents[0]);
+      if (!initialIntent) setSelectedIntent(INTENTS[def.type as RoomType][0]);
 
       // 2. Join session if not already in one
       if (!currentSessionId) {
         try {
-          await joinRoom(currentProfile.id, venueId, venue.room_type, initialIntent || def.intents[0]);
+          await joinRoom(currentProfile.id, venueId, venue.room_type, initialIntent || INTENTS[def.type as RoomType][0]);
         } catch (e) {
           // Handled by store
         }
@@ -326,7 +326,7 @@ const DigitalRoom = () => {
       <main className="max-w-lg mx-auto px-6 py-6">
         {activeTab === 'people' ? (
           <PeopleTab
-            intents={roomDef.intents}
+            intents={INTENTS[roomDef.type as RoomType]}
             selectedIntent={selectedIntent}
             onIntentChange={handleIntentChange}
             snoozed={snoozed}
