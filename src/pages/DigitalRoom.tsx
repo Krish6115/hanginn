@@ -1,504 +1,363 @@
-import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Moon, Sun, MessageSquare, Send as SendIcon, VolumeX, Flag } from 'lucide-react';
-import { ROOMS, INTENTS, ANCHORS, RoomType } from '@/lib/types';
+import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { motion } from 'framer-motion';
+import { ROOMS, RoomUser, PresenceState } from '@/lib/types';
 import { useHanginnStore } from '@/lib/hanginnStore';
 import { supabase } from '@/integrations/supabase/client';
-import { PersonCard } from '@/components/PersonCard';
-import { Input } from '@/components/ui/input';
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
-} from '@/components/ui/dialog';
 import type { Tables } from '@/integrations/supabase/types';
 
-type Profile = Tables<'profiles'>;
-type SessionWithProfile = Tables<'room_sessions'> & { profiles: Profile };
+import { RoomHeader } from '@/components/room/RoomHeader';
+import { PeopleTab } from '@/components/room/PeopleTab';
+import { ChatTab, ChatMessage } from '@/components/room/ChatTab';
+import { AnchorDialog } from '@/components/room/AnchorDialog';
+import { IcebreakerDialog } from '@/components/room/IcebreakerDialog';
+import { useRoomSubscriptions } from '@/hooks/useRoomSubscriptions';
 
-interface ChatMessage {
-  id: string;
-  message: string;
-  profile_id: string;
-  nickname: string;
-  created_at: string;
-}
+type Profile = Tables<'profiles'>;
+type RequestWithProfiles = Tables<'connection_requests'> & {
+  sender: Profile;
+  receiver: Profile;
+};
 
 const DigitalRoom = () => {
-  const { roomType } = useParams<{ roomType: string }>();
   const [searchParams] = useSearchParams();
-  const venueId = searchParams.get('venue') || '';
-  const userIntent = searchParams.get('intent') || '';
-  const userVibe = searchParams.get('vibe') || '';
   const navigate = useNavigate();
+  const venueId = searchParams.get('venue');
+  const initialIntent = searchParams.get('intent') || '';
 
   const {
-    currentProfile, currentSessionId, joinRoom, leaveRoom,
-    updateRhythm, toggleSnooze, sendConnectionRequest, respondToRequest,
-    saveSessionState, updateProfile,
+    currentProfile,
+    currentSessionId,
+    joinRoom,
+    leaveRoom,
+    updateRhythm,
+    toggleSnooze,
+    sendConnectionRequest,
+    respondToRequest,
   } = useHanginnStore();
 
-  const room = ROOMS.find((r) => r.type === roomType);
-  const intents = INTENTS[roomType as RoomType] || [];
-
   const [activeTab, setActiveTab] = useState<'people' | 'chat'>('people');
-  const [selectedIntent, setSelectedIntent] = useState(userIntent || intents[0] || '');
-  const [snoozed, setSnoozed] = useState(false);
-  const [sessions, setSessions] = useState<SessionWithProfile[]>([]);
-  const [requests, setRequests] = useState<Tables<'connection_requests'>[]>([]);
-  const [sessionId, setSessionId] = useState(currentSessionId);
   const [loading, setLoading] = useState(true);
-  const [showReciprocity, setShowReciprocity] = useState(false);
-  const [venueName, setVenueName] = useState<string>('');
-
-  useEffect(() => {
-    if (!venueId) return;
-    supabase.from('venues').select('name').eq('id', venueId).maybeSingle().then(({ data }) => {
-      if (data?.name) setVenueName(data.name);
-    });
-  }, [venueId]);
-
-  const [anchorDialog, setAnchorDialog] = useState<string | null>(null);
-  const [selectedAnchor, setSelectedAnchor] = useState('');
-  const [showIcebreaker, setShowIcebreaker] = useState<{ anchor: string; icebreaker: string } | null>(null);
-
-  // Chat state
+  const [snoozed, setSnoozed] = useState(false);
+  
+  // Data state
+  const [people, setPeople] = useState<RoomUser[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [chatInput, setChatInput] = useState('');
-  const [chatMuted, setChatMuted] = useState(false);
-  const chatEndRef = useRef<HTMLDivElement>(null);
+  const [requests, setRequests] = useState<RequestWithProfiles[]>([]);
+  
+  // Venue state
+  const [venueName, setVenueName] = useState('');
+  const [roomDef, setRoomDef] = useState(ROOM_TYPES[0]);
+  const [selectedIntent, setSelectedIntent] = useState(initialIntent || ROOM_TYPES[0].intents[0]);
 
+  // Dialog state
+  const [anchorDialog, setAnchorDialog] = useState<string | null>(null); // profileId of person we're connecting with
+  const [selectedAnchor, setSelectedAnchor] = useState('');
+  const [showIcebreaker, setShowIcebreaker] = useState<{ anchor: string; icebreaker: string; senderName: string } | null>(null);
+
+  // Initialize room and fetch data
   useEffect(() => {
-    if (!currentProfile || !venueId || !roomType) {
-      navigate(`/rooms/${roomType}/join?venue=${venueId}`);
+    if (!currentProfile || !venueId) {
+      navigate('/');
       return;
     }
 
     const init = async () => {
-      const sid = await joinRoom(currentProfile.id, venueId, roomType, selectedIntent);
-      setSessionId(sid);
+      // 1. Fetch venue to get room type
+      const { data: venue } = await supabase
+        .from('venues')
+        .select('name, room_type')
+        .eq('id', venueId)
+        .single();
+
+      if (!venue) {
+        navigate('/');
+        return;
+      }
+
+      setVenueName(venue.name);
+      const def = ROOMS.find((r) => r.type === venue.room_type) || ROOMS[0];
+      setRoomDef(def);
+      if (!initialIntent) setSelectedIntent(def.intents[0]);
+
+      // 2. Join session if not already in one
+      if (!currentSessionId) {
+        try {
+          await joinRoom(currentProfile.id, venueId, venue.room_type, initialIntent || def.intents[0]);
+        } catch (e) {
+          // Handled by store
+        }
+      }
+
+      // 3. Initial data fetch
+      await Promise.all([fetchSessions(), fetchRequests(), fetchMessages()]);
       setLoading(false);
-      saveSessionState({ roomType, venueId, step: 'room', intent: selectedIntent, vibe: userVibe });
     };
+
     init();
-
-    const reciprocityTimer = setTimeout(() => setShowReciprocity(true), 15000);
-
-    return () => {
-      clearTimeout(reciprocityTimer);
-      if (sessionId) leaveRoom(sessionId);
-    };
-  }, []);
-
-  // Fetch people
-  const fetchSessions = useCallback(async () => {
-    if (!venueId) return;
-    const { data } = await supabase
-      .from('room_sessions')
-      .select('*, profiles(*)')
-      .eq('venue_id', venueId)
-      .eq('is_active', true)
-      .neq('profile_id', currentProfile?.id || '');
-    setSessions((data as SessionWithProfile[]) || []);
-  }, [venueId, currentProfile]);
-
-  const fetchRequests = useCallback(async () => {
-    if (!currentProfile || !venueId) return;
-    const { data } = await supabase
-      .from('connection_requests')
-      .select('*')
-      .eq('venue_id', venueId)
-      .or(`sender_id.eq.${currentProfile.id},receiver_id.eq.${currentProfile.id}`);
-    setRequests(data || []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentProfile, venueId]);
 
-  // Fetch chat
+  // Fetch functions wrapped in useCallback for the subscription hook
+  const fetchSessions = useCallback(async () => {
+    if (!venueId) return;
+    const { data: sessions } = await supabase
+      .from('room_sessions')
+      .select('*, profile:profiles!room_sessions_profile_id_fkey(*)')
+      .eq('venue_id', venueId)
+      .eq('is_active', true);
+
+    if (sessions) {
+      const users: RoomUser[] = sessions.map((s: any) => ({
+        id: s.profile.id,
+        nickname: s.profile.nickname,
+        firstInitial: s.profile.nickname[0],
+        ageBand: s.profile.age_band,
+        hometown: s.profile.hometown,
+        profession: s.profile.profession,
+        photo: s.profile.photo_url,
+        intent: s.rhythm || 'Just hanging',
+        connected: false,
+        disclosureLevel: s.profile.photo_url ? 2 : s.profile.profession ? 1 : 0,
+        snoozed: s.snoozed,
+      }));
+      setPeople(users);
+    }
+  }, [venueId]);
+
+  const fetchRequests = useCallback(async () => {
+    if (!venueId || !currentProfile) return;
+    const { data } = await supabase
+      .from('connection_requests')
+      .select('*, sender:profiles!connection_requests_sender_id_fkey(*), receiver:profiles!connection_requests_receiver_id_fkey(*)')
+      .eq('venue_id', venueId)
+      .or(`receiver_id.eq.${currentProfile.id},sender_id.eq.${currentProfile.id}`)
+      .order('created_at', { ascending: false });
+    
+    setRequests((data as any) || []);
+  }, [venueId, currentProfile]);
+
   const fetchMessages = useCallback(async () => {
-    if (!venueId || !roomType) return;
+    if (!venueId) return;
     const { data } = await supabase
       .from('room_messages')
-      .select('*')
+      .select('*, profile:profiles!room_messages_profile_id_fkey(nickname)')
       .eq('venue_id', venueId)
-      .eq('room_type', roomType)
-      .order('created_at', { ascending: false })
-      .limit(20);
+      .order('created_at', { ascending: true })
+      .limit(100);
 
     if (data) {
-      const profileIds = [...new Set(data.map((m) => m.profile_id))];
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('id, nickname')
-        .in('id', profileIds);
-      const profileMap: Record<string, string> = {};
-      (profiles || []).forEach((p) => { profileMap[p.id] = p.nickname; });
-
-      setMessages(data.reverse().map((m) => ({
+      setMessages(data.map((m: any) => ({
         id: m.id,
         message: m.message,
         profile_id: m.profile_id,
-        nickname: profileMap[m.profile_id] || 'Someone',
-        created_at: m.created_at,
+        nickname: m.profile.nickname,
+        created_at: m.created_at
       })));
     }
-  }, [venueId, roomType]);
+  }, [venueId]);
 
-  useEffect(() => {
-    fetchSessions();
-    fetchRequests();
-    fetchMessages();
-  }, [fetchSessions, fetchRequests, fetchMessages]);
-
-  // Realtime subscriptions
-  useEffect(() => {
-    if (!venueId) return;
-    const sessionSub = supabase
-      .channel('room-sessions')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'room_sessions', filter: `venue_id=eq.${venueId}` }, () => fetchSessions())
-      .subscribe();
-    const requestSub = supabase
-      .channel('connection-requests')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'connection_requests', filter: `venue_id=eq.${venueId}` }, (payload) => {
-        fetchRequests();
-        const row = payload.new as Tables<'connection_requests'>;
-        if (row.status === 'accepted' && row.sender_id === currentProfile?.id && row.icebreaker) {
-          setShowIcebreaker({ anchor: row.receiver_anchor || 'Somewhere nearby', icebreaker: row.icebreaker });
+  // Use the new scoped subscriptions hook
+  useRoomSubscriptions({
+    venueId: venueId || '',
+    onSessionsChange: fetchSessions,
+    onRequestsChange: (payload) => {
+      fetchRequests();
+      // Handle icebreaker popups for newly accepted requests
+      if (
+        payload.eventType === 'UPDATE' &&
+        payload.new.status === 'accepted' &&
+        payload.new.sender_id === currentProfile?.id
+      ) {
+        const oldStatus = payload.old?.status;
+        if (oldStatus !== 'accepted') {
+          const matchedRequest = requests.find((r) => r.id === payload.new.id);
+          const name = matchedRequest?.receiver.nickname || 'Someone';
+          setShowIcebreaker({
+            anchor: payload.new.receiver_anchor || 'nearby',
+            icebreaker: payload.new.icebreaker || 'Say hi!',
+            senderName: name,
+          });
         }
-      })
-      .subscribe();
-    const chatSub = supabase
-      .channel('room-chat')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'room_messages', filter: `venue_id=eq.${venueId}` }, () => fetchMessages())
-      .subscribe();
-    return () => {
-      supabase.removeChannel(sessionSub);
-      supabase.removeChannel(requestSub);
-      supabase.removeChannel(chatSub);
-    };
-  }, [venueId, currentProfile, fetchSessions, fetchRequests, fetchMessages]);
+      }
+    },
+    onMessagesChange: fetchMessages
+  });
 
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  // Derived state memoization
+  const processedPeople = useMemo(() => {
+    if (!currentProfile) return [];
+    
+    // Filter out self
+    let others = people.filter((p) => p.id !== currentProfile.id);
+
+    // Map connection states
+    others = others.map((p) => {
+      // Find requests between current user and this person
+      const relevantRequests = requests.filter(
+        (r) =>
+          (r.sender_id === currentProfile.id && r.receiver_id === p.id) ||
+          (r.receiver_id === currentProfile.id && r.sender_id === p.id)
+      );
+
+      // Sort by newest first
+      relevantRequests.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      
+      const latest = relevantRequests[0];
+
+      if (latest) {
+        if (latest.status === 'accepted') {
+          return { ...p, connected: true };
+        }
+        if (latest.status === 'pending') {
+          if (latest.sender_id === currentProfile.id) {
+            return { ...p, requestSent: true };
+          } else {
+            return { ...p, requestReceived: true, requestId: latest.id };
+          }
+        }
+      }
+      return p;
+    });
+
+    // Sort: Matching intent > other intents
+    return others.sort((a, b) => {
+      if (a.intent === selectedIntent && b.intent !== selectedIntent) return -1;
+      if (a.intent !== selectedIntent && b.intent === selectedIntent) return 1;
+      return 0;
+    });
+  }, [people, requests, currentProfile, selectedIntent]);
+
+  // Handlers
+  const handleLeave = async () => {
+    if (currentSessionId) {
+      await leaveRoom(currentSessionId);
+    }
+    navigate(`/rooms/${roomDef.id}`);
+  };
+
+  const handleSnoozeToggle = async () => {
+    if (!currentSessionId) return;
+    const newSnooze = !snoozed;
+    setSnoozed(newSnooze);
+    await toggleSnooze(currentSessionId, newSnooze);
+  };
 
   const handleIntentChange = async (intent: string) => {
     setSelectedIntent(intent);
-    if (sessionId) await updateRhythm(sessionId, intent);
+    if (currentSessionId) {
+      await updateRhythm(currentSessionId, intent);
+    }
   };
 
-  const handleSnooze = async () => {
-    const newVal = !snoozed;
-    setSnoozed(newVal);
-    if (sessionId) await toggleSnooze(sessionId, newVal);
+  const handleConnect = (profileId: string) => {
+    setAnchorDialog(profileId);
   };
 
-  const handleSendMessage = async () => {
-    if (!chatInput.trim() || !currentProfile || !venueId || !roomType) return;
-    await supabase.from('room_messages').insert({
-      venue_id: venueId,
-      room_type: roomType,
-      profile_id: currentProfile.id,
-      message: chatInput.trim(),
-    });
-    setChatInput('');
-  };
-
-  const currentDisclosure = useMemo(() => {
-    return (currentProfile?.hometown && currentProfile?.profession) ? 2 : 1;
-  }, [currentProfile]);
-
-  const people = useMemo(() => {
-    return sessions.map((s) => {
-      const profile = s.profiles;
-      const sentReq = requests.find((r) => r.sender_id === currentProfile?.id && r.receiver_id === profile.id);
-      const receivedReq = requests.find((r) => r.receiver_id === currentProfile?.id && r.sender_id === profile.id && r.status === 'pending');
-      const connected = requests.some((r) =>
-        r.status === 'accepted' &&
-        ((r.sender_id === currentProfile?.id && r.receiver_id === profile.id) ||
-         (r.receiver_id === currentProfile?.id && r.sender_id === profile.id))
-      );
-      const otherDisclosure = (profile.hometown && profile.profession) ? 2 : 1;
-      const visibleLevel = Math.min(currentDisclosure, otherDisclosure);
-
-      return {
-        id: profile.id,
-        nickname: profile.nickname,
-        firstInitial: profile.nickname[0],
-        ageBand: profile.age_band,
-        hometown: profile.hometown,
-        profession: profile.profession,
-        photo: profile.photo_url || undefined,
-        intent: s.rhythm || '',
-        vibe: undefined,
-        connected,
-        pendingRequest: sentReq?.status === 'pending' ? 'sent' as const
-          : receivedReq ? 'received' as const
-          : undefined,
-        requestId: receivedReq?.id,
-        disclosureLevel: visibleLevel,
-      };
-    });
-  }, [sessions, requests, currentProfile, currentDisclosure]);
-
-  const sorted = useMemo(() => {
-    const matching = people.filter((u) => u.intent === selectedIntent);
-    const others = people.filter((u) => u.intent !== selectedIntent);
-    return [...matching, ...others];
-  }, [people, selectedIntent]);
-
-  const handleConnect = async (profileId: string) => {
-    if (!currentProfile || !venueId) return;
-    await sendConnectionRequest(currentProfile.id, profileId, venueId);
-    fetchRequests();
-  };
-
-  const handleAccept = (requestId: string) => { setAnchorDialog(requestId); };
   const handleAnchorSubmit = async () => {
-    if (!anchorDialog || !selectedAnchor) return;
-    await respondToRequest(anchorDialog, true, selectedAnchor);
+    if (!anchorDialog || !selectedAnchor || !venueId || !currentProfile) return;
+    
+    // anchorDialog holds the target profileId in this context
+    await sendConnectionRequest(currentProfile.id, anchorDialog, venueId);
+    
     setAnchorDialog(null);
     setSelectedAnchor('');
-    fetchRequests();
-  };
-  const handleReject = async (requestId: string) => {
-    await respondToRequest(requestId, false);
-    fetchRequests();
+    fetchRequests(); // Optimistic update
   };
 
-  if (!room) return null;
+  const handleSendMessage = async (text: string) => {
+    if (!venueId || !currentProfile) return;
+    
+    const { error } = await supabase.from('room_messages').insert({
+      venue_id: venueId,
+      room_type: roomDef.id,
+      profile_id: currentProfile.id,
+      message: text,
+    });
+
+    if (error) {
+      console.error('Send message error:', error);
+      throw error;
+    }
+  };
+
+  // Determine current disclosure level
+  const currentDisclosure = currentProfile?.photo_url ? 2 : currentProfile?.profession ? 1 : 0;
+  const showReciprocity = roomDef.presenceState !== 'quiet'; // Don't show in residential
 
   return (
-    <div className="min-h-screen bg-background">
-      <style>{`
-        .protected-room { -webkit-user-select: none; user-select: none; }
-        .protected-room img { pointer-events: none; -webkit-touch-callout: none; }
-      `}</style>
+    <div className="min-h-screen bg-background pb-20">
+      <RoomHeader
+        room={roomDef}
+        venueName={venueName}
+        sessionCount={processedPeople.length + 1}
+        snoozed={snoozed}
+        onSnoozeToggle={handleSnoozeToggle}
+        onLeave={handleLeave}
+      />
 
-      <header className="sticky top-0 z-20 bg-background/85 backdrop-blur-xl border-b border-border/60 px-6 py-4">
-        <div className="max-w-lg mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3 min-w-0">
-            <button onClick={() => { if (sessionId) leaveRoom(sessionId); navigate('/'); }} className="text-muted-foreground hover:text-foreground transition-colors shrink-0">
-              <ArrowLeft className="h-5 w-5" />
-            </button>
-            <div className="min-w-0">
-              <h2 className="font-display text-base text-foreground truncate tracking-wide">
-                {venueName ? <>{venueName} <span className="text-muted-foreground/60 mx-1">·</span> <span className="text-foreground/80">{room.label}</span></> : room.label}
-              </h2>
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <span className="relative flex h-1.5 w-1.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-bronze/60 opacity-70" />
-                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-bronze" />
-                </span>
-                <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground/80 font-body">
-                  {sessions.length === 0 ? 'Quiet · just you' : sessions.length === 1 ? 'Live · someone is here' : `Live · a few inside`}
-                </p>
-              </div>
-            </div>
-          </div>
-          <button onClick={handleSnooze} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground font-body rounded-full border border-border/60 px-3 py-1.5 transition-colors shrink-0">
-            {snoozed ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
-            {snoozed ? 'Go active' : 'Snooze'}
-          </button>
-        </div>
-      </header>
-
-      <main className="max-w-lg mx-auto px-6 py-6 protected-room">
-        {/* People / Chat toggle */}
-        <div className="flex rounded-xl bg-secondary p-1 mb-5">
-          <button onClick={() => setActiveTab('people')}
-            className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-body transition-all duration-300 ${
-              activeTab === 'people' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'
-            }`}>
+      <div className="sticky top-[69px] z-10 bg-background border-b border-border/40 px-6 pt-3 pb-0">
+        <div className="max-w-lg mx-auto flex gap-6">
+          <button
+            onClick={() => setActiveTab('people')}
+            className={`pb-3 text-sm font-body font-medium transition-colors relative ${
+              activeTab === 'people' ? 'text-foreground' : 'text-muted-foreground hover:text-foreground/80'
+            }`}
+          >
             People
+            {activeTab === 'people' && (
+              <motion.div layoutId="roomTabIndicator" className="absolute bottom-0 left-0 right-0 h-0.5 bg-bronze" />
+            )}
           </button>
-          <button onClick={() => setActiveTab('chat')}
-            className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-body transition-all duration-300 ${
-              activeTab === 'chat' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'
-            }`}>
-            <MessageSquare className="h-3.5 w-3.5" />
-            Room Chat
+          <button
+            onClick={() => setActiveTab('chat')}
+            className={`pb-3 text-sm font-body font-medium transition-colors relative ${
+              activeTab === 'chat' ? 'text-foreground' : 'text-muted-foreground hover:text-foreground/80'
+            }`}
+          >
+            Chat
+            {activeTab === 'chat' && (
+              <motion.div layoutId="roomTabIndicator" className="absolute bottom-0 left-0 right-0 h-0.5 bg-bronze" />
+            )}
           </button>
         </div>
+      </div>
 
-        <AnimatePresence mode="wait">
-          {activeTab === 'people' ? (
-            <motion.div key="people" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <div className="mb-6">
-                <p className="text-xs text-muted-foreground mb-2 font-body">Your intent right now</p>
-                <div className="flex flex-wrap gap-2">
-                  {intents.map((intent) => (
-                    <button key={intent} onClick={() => handleIntentChange(intent)}
-                      className={`rounded-full px-4 py-1.5 text-sm font-body transition-all duration-300 ${
-                        selectedIntent === intent ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
-                      }`}>
-                      {intent}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {snoozed && (
-                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}
-                  className="mb-4 rounded-xl bg-secondary p-3 text-center text-sm text-muted-foreground font-body">
-                  You're on snooze. Connections paused.
-                </motion.div>
-              )}
-
-              <AnimatePresence>
-                {showReciprocity && currentDisclosure < 2 && (
-                  <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
-                    className="mb-4 rounded-xl border border-primary/10 bg-primary/5 p-4">
-                    <p className="text-sm text-foreground font-body">Share a little more to unlock more</p>
-                    <p className="text-xs text-muted-foreground font-body mt-1">Add your hometown and profession to see fuller profiles.</p>
-                    <button onClick={() => navigate('/profile')}
-                      className="mt-2 text-xs text-primary font-body underline underline-offset-4">
-                      Add details
-                    </button>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              {loading ? (
-                <div className="space-y-3">
-                  {[1, 2, 3].map((i) => <div key={i} className="h-20 rounded-2xl bg-secondary animate-pulse" />)}
-                </div>
-              ) : sorted.length === 0 ? (
-                <div className="text-center py-16">
-                  <p className="text-muted-foreground font-body text-sm">No one else is here yet. Be the first.</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <AnimatePresence>
-                    {sorted.map((user) => (
-                      <PersonCard
-                        key={user.id}
-                        user={user}
-                        isMatchingIntent={user.intent === selectedIntent}
-                        snoozed={snoozed}
-                        onConnect={() => handleConnect(user.id)}
-                        onRespond={(accept) => {
-                          if (accept && user.requestId) handleAccept(user.requestId);
-                          else if (user.requestId) handleReject(user.requestId);
-                        }}
-                      />
-                    ))}
-                  </AnimatePresence>
-                </div>
-              )}
-            </motion.div>
-          ) : (
-            <motion.div key="chat" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="flex flex-col" style={{ minHeight: 'calc(100vh - 220px)' }}>
-              <div className="flex items-center justify-between mb-5">
-                <p className="text-[11px] text-muted-foreground/70 font-body font-light italic tracking-wide">
-                  An open thread for the room. Speak softly.
-                </p>
-                <div className="flex gap-1.5">
-                  <button onClick={() => setChatMuted(!chatMuted)}
-                    className={`p-1.5 rounded-full transition-colors ${chatMuted ? 'text-bronze' : 'text-muted-foreground/70 hover:text-foreground'}`}>
-                    <VolumeX className="h-3.5 w-3.5" />
-                  </button>
-                  <button className="p-1.5 rounded-full text-muted-foreground/70 hover:text-foreground transition-colors">
-                    <Flag className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex-1 mb-4 overflow-y-auto max-h-[50vh] pr-1">
-                {messages.length === 0 ? (
-                  <div className="text-center py-16 space-y-2">
-                    <p className="font-display text-base text-foreground/80">The room is quiet.</p>
-                    <p className="text-xs text-muted-foreground/60 font-body font-light italic">
-                      Be the first to break the silence.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="divide-y divide-border/30">
-                    {messages.map((msg) => {
-                      const isMe = msg.profile_id === currentProfile?.id;
-                      return (
-                        <div key={msg.id} className="py-3 first:pt-0">
-                          <p className="text-sm font-body text-foreground leading-relaxed">
-                            <span className={`font-semibold tracking-wide ${isMe ? 'text-bronze' : 'text-foreground'}`}>
-                              {isMe ? 'You' : msg.nickname}
-                            </span>
-                            <span className="text-muted-foreground/50 mx-2">·</span>
-                            <span className="text-foreground/90">{msg.message}</span>
-                          </p>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-                <div ref={chatEndRef} />
-              </div>
-
-              <div className="sticky bottom-0 -mx-6 px-6 pt-3 pb-4 bg-gradient-to-t from-background via-background to-background/80 border-t border-border/40">
-                <div className="flex items-center gap-2">
-                  <Input
-                    value={chatInput}
-                    onChange={(e) => setChatInput(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                    placeholder="Say something to the room..."
-                    className="bg-secondary/60 border-border/50 flex-1 rounded-full px-5 h-11 font-body text-sm placeholder:text-muted-foreground/50 placeholder:italic focus-visible:ring-bronze/30"
-                  />
-                  <button
-                    onClick={handleSendMessage}
-                    disabled={!chatInput.trim()}
-                    className="h-11 w-11 rounded-full bg-secondary/60 text-muted-foreground hover:text-bronze hover:bg-secondary transition-all flex items-center justify-center disabled:opacity-30 disabled:hover:text-muted-foreground"
-                    aria-label="Send"
-                  >
-                    <SendIcon className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+      <main className="max-w-lg mx-auto px-6 py-6">
+        {activeTab === 'people' ? (
+          <PeopleTab
+            intents={roomDef.intents}
+            selectedIntent={selectedIntent}
+            onIntentChange={handleIntentChange}
+            snoozed={snoozed}
+            showReciprocity={showReciprocity}
+            currentDisclosure={currentDisclosure}
+            loading={loading}
+            sortedPeople={processedPeople}
+            onConnect={handleConnect}
+            onRespond={respondToRequest}
+          />
+        ) : (
+          <ChatTab
+            messages={messages}
+            currentProfileId={currentProfile?.id}
+            onSendMessage={handleSendMessage}
+          />
+        )}
       </main>
 
-      <Dialog open={!!anchorDialog} onOpenChange={() => setAnchorDialog(null)}>
-        <DialogContent className="rounded-2xl">
-          <DialogHeader>
-            <DialogTitle className="font-display">Where are you sitting?</DialogTitle>
-            <DialogDescription className="font-body">Share your anchor so they can find you.</DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-wrap gap-2 mt-2">
-            {ANCHORS.map((a) => (
-              <button key={a} onClick={() => setSelectedAnchor(a)}
-                className={`rounded-full px-4 py-2 text-sm font-body transition-colors ${
-                  selectedAnchor === a ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
-                }`}>
-                {a}
-              </button>
-            ))}
-          </div>
-          <button onClick={handleAnchorSubmit} disabled={!selectedAnchor}
-            className="w-full mt-4 rounded-xl py-3 text-sm font-body bg-primary/90 text-primary-foreground hover:bg-primary transition-colors disabled:opacity-50">
-            Share and get icebreaker
-          </button>
-        </DialogContent>
-      </Dialog>
+      <AnchorDialog
+        open={!!anchorDialog}
+        onOpenChange={(o) => !o && setAnchorDialog(null)}
+        selectedAnchor={selectedAnchor}
+        onAnchorSelect={setSelectedAnchor}
+        onSubmit={handleAnchorSubmit}
+      />
 
-      <Dialog open={!!showIcebreaker} onOpenChange={() => setShowIcebreaker(null)}>
-        <DialogContent className="rounded-2xl text-center">
-          <DialogHeader>
-            <DialogTitle className="font-display text-xl">You're connected</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 mt-2">
-            <div className="rounded-xl bg-secondary p-4">
-              <p className="text-xs text-muted-foreground mb-1 font-body">Their anchor</p>
-              <p className="font-body font-medium text-foreground">{showIcebreaker?.anchor}</p>
-            </div>
-            <div className="rounded-xl bg-primary/5 border border-primary/10 p-4">
-              <p className="text-xs text-muted-foreground mb-1 font-body">Icebreaker</p>
-              <p className="font-body text-sm text-foreground italic">"{showIcebreaker?.icebreaker}"</p>
-            </div>
-            <button onClick={() => setShowIcebreaker(null)}
-              className="w-full rounded-xl py-3 text-sm font-body bg-primary/90 text-primary-foreground hover:bg-primary transition-colors">
-              Go meet them
-            </button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <IcebreakerDialog
+        icebreakerData={showIcebreaker}
+        onClose={() => setShowIcebreaker(null)}
+      />
     </div>
   );
 };

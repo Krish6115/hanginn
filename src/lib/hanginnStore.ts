@@ -11,6 +11,7 @@ interface SessionState {
   step: 'venue' | 'profile' | 'verify' | 'room';
   intent?: string;
   vibe?: string;
+  geofenceVerified?: boolean;
 }
 
 interface HanginnState {
@@ -18,9 +19,11 @@ interface HanginnState {
   currentSessionId: string | null;
   currentVenueId: string | null;
   currentRoomType: string | null;
+  lastError: string | null;
 
   setCurrentProfile: (p: Profile) => void;
   setCurrentSession: (sessionId: string, venueId: string, roomType: string) => void;
+  clearError: () => void;
 
   // Session persistence
   saveSessionState: (state: SessionState) => void;
@@ -60,6 +63,7 @@ interface HanginnState {
 }
 
 const PROFILE_KEY = 'hanginn_profile';
+const SESSION_KEY = 'hanginn_session';
 
 const loadStoredProfile = (): Profile | null => {
   try {
@@ -71,8 +75,12 @@ const loadStoredProfile = (): Profile | null => {
 };
 
 const persistProfile = (p: Profile | null) => {
-  if (p) localStorage.setItem(PROFILE_KEY, JSON.stringify(p));
-  else localStorage.removeItem(PROFILE_KEY);
+  try {
+    if (p) localStorage.setItem(PROFILE_KEY, JSON.stringify(p));
+    else localStorage.removeItem(PROFILE_KEY);
+  } catch {
+    // Storage quota exceeded or private browsing — degrade gracefully
+  }
 };
 
 export const useHanginnStore = create<HanginnState>((set, get) => ({
@@ -80,139 +88,225 @@ export const useHanginnStore = create<HanginnState>((set, get) => ({
   currentSessionId: null,
   currentVenueId: null,
   currentRoomType: null,
+  lastError: null,
 
   setCurrentProfile: (p) => { persistProfile(p); set({ currentProfile: p }); },
   setCurrentSession: (sessionId, venueId, roomType) =>
     set({ currentSessionId: sessionId, currentVenueId: venueId, currentRoomType: roomType }),
+  clearError: () => set({ lastError: null }),
 
   saveSessionState: (state) => {
-    localStorage.setItem('hanginn_session', JSON.stringify(state));
+    try {
+      localStorage.setItem(SESSION_KEY, JSON.stringify(state));
+    } catch {
+      // Silent — session resume is a nice-to-have, not critical
+    }
   },
   getSessionState: () => {
-    const s = localStorage.getItem('hanginn_session');
-    return s ? JSON.parse(s) : null;
+    try {
+      const s = localStorage.getItem(SESSION_KEY);
+      return s ? JSON.parse(s) : null;
+    } catch {
+      return null;
+    }
   },
   clearSessionState: () => {
-    localStorage.removeItem('hanginn_session');
+    try {
+      localStorage.removeItem(SESSION_KEY);
+    } catch {
+      // Silent
+    }
   },
 
   signOut: async () => {
     persistProfile(null);
     set({ currentProfile: null, currentSessionId: null, currentVenueId: null, currentRoomType: null });
-    localStorage.removeItem('hanginn_session');
+    try {
+      localStorage.removeItem(SESSION_KEY);
+    } catch {
+      // Silent
+    }
   },
 
   upsertProfile: async (_email, data) => {
     const existing = get().currentProfile;
 
-    if (existing?.id) {
-      const { data: updated } = await supabase
+    try {
+      if (existing?.id) {
+        const { data: updated, error } = await supabase
+          .from('profiles')
+          .update({
+            nickname: data.nickname,
+            age_band: data.age_band,
+            hometown: data.hometown ?? existing.hometown,
+            profession: data.profession ?? existing.profession,
+            gender_preference: data.gender_preference ?? existing.gender_preference,
+            photo_url: data.photo_url ?? existing.photo_url,
+          })
+          .eq('id', existing.id)
+          .select()
+          .single();
+
+        if (error) {
+          console.error('[hanginnStore] Profile update failed:', error.message);
+          set({ lastError: 'Failed to update profile. Please try again.' });
+          // Return existing profile as fallback instead of crashing
+          return existing;
+        }
+
+        const profile = updated ?? existing;
+        persistProfile(profile);
+        set({ currentProfile: profile });
+        return profile;
+      }
+
+      const { data: created, error } = await supabase
         .from('profiles')
-        .update({
+        .insert({
+          email: null,
+          phone: null,
           nickname: data.nickname,
           age_band: data.age_band,
-          hometown: data.hometown ?? existing.hometown,
-          profession: data.profession ?? existing.profession,
-          gender_preference: data.gender_preference ?? existing.gender_preference,
-          photo_url: data.photo_url ?? existing.photo_url,
+          hometown: data.hometown || '',
+          profession: data.profession || '',
+          gender_preference: data.gender_preference || 'all',
+          photo_url: data.photo_url,
+          user_id: null,
         })
-        .eq('id', existing.id)
         .select()
         .single();
-      const profile = updated || existing;
-      persistProfile(profile);
-      set({ currentProfile: profile });
-      return profile;
-    }
 
-    const { data: created } = await supabase
-      .from('profiles')
-      .insert({
-        email: null,
-        phone: null,
-        nickname: data.nickname,
-        age_band: data.age_band,
-        hometown: data.hometown || '',
-        profession: data.profession || '',
-        gender_preference: data.gender_preference || 'all',
-        photo_url: data.photo_url,
-        user_id: null,
-      })
-      .select()
-      .single();
-    const profile = created!;
-    persistProfile(profile);
-    set({ currentProfile: profile });
-    return profile;
+      if (error || !created) {
+        console.error('[hanginnStore] Profile creation failed:', error?.message);
+        set({ lastError: 'Failed to create profile. Please try again.' });
+        throw new Error(error?.message || 'Profile creation returned no data');
+      }
+
+      persistProfile(created);
+      set({ currentProfile: created });
+      return created;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Unknown error';
+      console.error('[hanginnStore] upsertProfile error:', msg);
+      set({ lastError: `Profile error: ${msg}` });
+      throw e;
+    }
   },
 
   fetchVenues: async (roomType) => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('venues')
       .select('*')
       .eq('room_type', roomType);
+
+    if (error) {
+      console.error('[hanginnStore] fetchVenues error:', error.message);
+      set({ lastError: 'Failed to load venues.' });
+      return [];
+    }
     return data || [];
   },
 
   fetchVenueSessionCount: async (venueId) => {
-    const { count } = await supabase
+    const { count, error } = await supabase
       .from('room_sessions')
       .select('*', { count: 'exact', head: true })
       .eq('venue_id', venueId)
       .eq('is_active', true);
+
+    if (error) {
+      console.error('[hanginnStore] fetchVenueSessionCount error:', error.message);
+      return 0;
+    }
     return count || 0;
   },
 
   joinRoom: async (profileId, venueId, roomType, rhythm) => {
-    await supabase
-      .from('room_sessions')
-      .update({ is_active: false })
-      .eq('profile_id', profileId)
-      .eq('is_active', true);
+    try {
+      // Deactivate any existing sessions for this user
+      const { error: deactivateError } = await supabase
+        .from('room_sessions')
+        .update({ is_active: false })
+        .eq('profile_id', profileId)
+        .eq('is_active', true);
 
-    const { data } = await supabase
-      .from('room_sessions')
-      .insert({ profile_id: profileId, venue_id: venueId, room_type: roomType, rhythm })
-      .select()
-      .single();
+      if (deactivateError) {
+        console.warn('[hanginnStore] Failed to deactivate old sessions:', deactivateError.message);
+        // Non-fatal — continue with join
+      }
 
-    const sessionId = data!.id;
-    set({ currentSessionId: sessionId, currentVenueId: venueId, currentRoomType: roomType });
-    return sessionId;
+      const { data, error } = await supabase
+        .from('room_sessions')
+        .insert({ profile_id: profileId, venue_id: venueId, room_type: roomType, rhythm })
+        .select()
+        .single();
+
+      if (error || !data) {
+        console.error('[hanginnStore] joinRoom error:', error?.message);
+        set({ lastError: 'Failed to join room. Please try again.' });
+        throw new Error(error?.message || 'Join room returned no data');
+      }
+
+      const sessionId = data.id;
+      set({ currentSessionId: sessionId, currentVenueId: venueId, currentRoomType: roomType });
+      return sessionId;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Unknown error';
+      console.error('[hanginnStore] joinRoom error:', msg);
+      set({ lastError: `Failed to join room: ${msg}` });
+      throw e;
+    }
   },
 
   leaveRoom: async (sessionId) => {
-    await supabase
-      .from('room_sessions')
-      .update({ is_active: false })
-      .eq('id', sessionId);
+    try {
+      await supabase
+        .from('room_sessions')
+        .update({ is_active: false })
+        .eq('id', sessionId);
+    } catch (e) {
+      console.warn('[hanginnStore] leaveRoom error (non-fatal):', e);
+    }
     set({ currentSessionId: null, currentVenueId: null, currentRoomType: null });
     get().clearSessionState();
   },
 
   updateRhythm: async (sessionId, rhythm) => {
-    await supabase
+    const { error } = await supabase
       .from('room_sessions')
       .update({ rhythm })
       .eq('id', sessionId);
+
+    if (error) {
+      console.error('[hanginnStore] updateRhythm error:', error.message);
+    }
   },
 
   toggleSnooze: async (sessionId, snoozed) => {
-    await supabase
+    const { error } = await supabase
       .from('room_sessions')
       .update({ snoozed })
       .eq('id', sessionId);
+
+    if (error) {
+      console.error('[hanginnStore] toggleSnooze error:', error.message);
+    }
   },
 
   sendConnectionRequest: async (senderId, receiverId, venueId) => {
-    await supabase
+    const { error } = await supabase
       .from('connection_requests')
       .insert({ sender_id: senderId, receiver_id: receiverId, venue_id: venueId });
+
+    if (error) {
+      console.error('[hanginnStore] sendConnectionRequest error:', error.message);
+      set({ lastError: 'Failed to send connection request.' });
+    }
   },
 
   respondToRequest: async (requestId, accept, receiverAnchor) => {
     const icebreaker = accept ? ICEBREAKERS[Math.floor(Math.random() * ICEBREAKERS.length)] : null;
-    await supabase
+    const { error } = await supabase
       .from('connection_requests')
       .update({
         status: accept ? 'accepted' : 'rejected',
@@ -220,31 +314,54 @@ export const useHanginnStore = create<HanginnState>((set, get) => ({
         icebreaker,
       })
       .eq('id', requestId);
+
+    if (error) {
+      console.error('[hanginnStore] respondToRequest error:', error.message);
+      set({ lastError: 'Failed to respond to request.' });
+    }
   },
 
   addToCircle: async (profileId, connectedProfileId, venueId) => {
-    await supabase.from('circles').insert([
+    const { error } = await supabase.from('circles').insert([
       { profile_id: profileId, connected_profile_id: connectedProfileId, venue_id: venueId },
       { profile_id: connectedProfileId, connected_profile_id: profileId, venue_id: venueId },
     ]);
+
+    if (error) {
+      console.error('[hanginnStore] addToCircle error:', error.message);
+      set({ lastError: 'Failed to add to circle.' });
+    }
   },
 
   fetchCircle: async (profileId) => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('circles')
       .select('*, connected_profile:profiles!circles_connected_profile_id_fkey(*), venue:venues!circles_venue_id_fkey(*)')
       .eq('profile_id', profileId)
       .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('[hanginnStore] fetchCircle error:', error.message);
+      set({ lastError: 'Failed to load your circle.' });
+      return [];
+    }
     return (data as any) || [];
   },
 
   updateProfile: async (profileId, data) => {
-    const { data: updated } = await supabase
+    const { data: updated, error } = await supabase
       .from('profiles')
       .update(data)
       .eq('id', profileId)
       .select()
       .single();
+
+    if (error) {
+      console.error('[hanginnStore] updateProfile error:', error.message);
+      set({ lastError: 'Failed to update profile.' });
+      return;
+    }
+
     if (updated) {
       persistProfile(updated);
       set({ currentProfile: updated });

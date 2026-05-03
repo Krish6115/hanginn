@@ -5,6 +5,7 @@ import { MapPin, Loader2, Check } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { getDistanceMeters } from '@/lib/types';
 import { useHanginnStore } from '@/lib/hanginnStore';
+import { useGeolocation, distanceTo, collectAccurateReadings } from '@/hooks/useGeolocation';
 
 type VerifyState = 'pre-permission' | 'verifying' | 'success' | 'failed' | 'weak-signal';
 type ButtonPhase = 'idle' | 'loading' | 'confirmed';
@@ -19,6 +20,23 @@ const FALLBACK_RADIUS_BY_ROOM: Record<string, number> = {
   transit: 50,
 };
 
+interface VenueGeoData {
+  lat: number | null;
+  lng: number | null;
+  name: string;
+  radius_meters: number;
+  room_type: string;
+}
+
+const ROOM_LABELS: Record<string, string> = {
+  social: 'Social Room',
+  intellectual: 'Intellectual Room',
+  official: 'Official Room',
+  play: 'Play Room',
+  transit: 'Transit Room',
+  residential: 'Residential Room',
+};
+
 const VerifyPresence = () => {
   const { roomType } = useParams<{ roomType: string }>();
   const [searchParams] = useSearchParams();
@@ -31,104 +49,49 @@ const VerifyPresence = () => {
   const [state, setState] = useState<VerifyState>('pre-permission');
   const [errorMsg, setErrorMsg] = useState('');
   const [buttonPhase, setButtonPhase] = useState<ButtonPhase>('idle');
+  const [retryCount, setRetryCount] = useState(0);
 
-  // Live UI-only proximity probe (does NOT gate entry — verify() still owns that)
-  const [probeDistance, setProbeDistance] = useState<number | null>(null);
+  // Venue data
+  const [venueData, setVenueData] = useState<VenueGeoData | null>(null);
   const [probeRadius, setProbeRadius] = useState<number | null>(null);
   const [probeRoomLabel, setProbeRoomLabel] = useState<string>('Room');
 
-  useEffect(() => {
-    let cancelled = false;
-    let watchId: number | null = null;
+  // Use shared geolocation hook for live proximity probe
+  const geo = useGeolocation({ enabled: true, throttleMs: 3000, maxAccuracy: 80 });
 
-    const startProbe = async () => {
-      if (!venueId) return;
+  // Fetch venue geo data once
+  useEffect(() => {
+    if (!venueId) return;
+
+    const loadVenue = async () => {
       const { data: venue } = await supabase
         .from('venues')
-        .select('lat, lng, radius_meters, room_type')
+        .select('lat, lng, radius_meters, room_type, name')
         .eq('id', venueId)
         .single();
-      if (cancelled || !venue?.lat || !venue?.lng) return;
 
-      const venueRadius = (venue as any).radius_meters
-        ? Number((venue as any).radius_meters)
-        : null;
-      const radius =
-        venueRadius ?? FALLBACK_RADIUS_BY_ROOM[roomType || ''] ?? 50;
+      if (!venue) return;
+
+      setVenueData(venue);
+      const radius = venue.radius_meters || FALLBACK_RADIUS_BY_ROOM[roomType || ''] || 50;
       setProbeRadius(radius);
-
-      const labelMap: Record<string, string> = {
-        social: 'Social Room',
-        intellectual: 'Intellectual Room',
-        official: 'Official Room',
-        play: 'Play Room',
-        transit: 'Transit Room',
-        residential: 'Residential Room',
-      };
-      setProbeRoomLabel(labelMap[(venue as any).room_type] || labelMap[roomType || ''] || 'Room');
-
-      if (!('geolocation' in navigator)) return;
-      watchId = navigator.geolocation.watchPosition(
-        (pos) => {
-          if (cancelled) return;
-          const d = getDistanceMeters(
-            pos.coords.latitude,
-            pos.coords.longitude,
-            Number(venue.lat),
-            Number(venue.lng)
-          );
-          setProbeDistance(d);
-        },
-        () => {
-          /* silent — probe is best-effort */
-        },
-        { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
-      );
+      setProbeRoomLabel(ROOM_LABELS[venue.room_type] || ROOM_LABELS[roomType || ''] || 'Room');
     };
 
-    startProbe();
-    return () => {
-      cancelled = true;
-      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
-    };
+    loadVenue();
   }, [venueId, roomType]);
 
-  const formatDistance = (m: number) => {
-    if (m < 1000) return `~${Math.round(m)}m`;
-    return `~${(m / 1000).toFixed(1)}km`;
-  };
+  // Calculate distance from shared geo state
+  const probeDistance = venueData?.lat != null && venueData?.lng != null
+    ? distanceTo(geo, Number(venueData.lat), Number(venueData.lng))
+    : null;
 
   const insideZone =
     probeDistance !== null && probeRadius !== null && probeDistance <= probeRadius;
 
-  const collectReadings = async (): Promise<{ lat: number; lng: number } | { weak: true }> => {
-    const valid: { lat: number; lng: number; acc: number }[] = [];
-    for (let i = 0; i < 5; i++) {
-      try {
-        const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject, {
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 0,
-          });
-        });
-        if (pos.coords.accuracy <= 40) {
-          valid.push({
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude,
-            acc: pos.coords.accuracy,
-          });
-        }
-      } catch (e: any) {
-        if (e?.code === 1) throw e; // permission denied — bubble up
-        // timeout / unavailable — keep trying
-      }
-    }
-    if (valid.length < 2) return { weak: true };
-    const best = valid.sort((a, b) => a.acc - b.acc).slice(0, 3);
-    const lat = best.reduce((s, r) => s + r.lat, 0) / best.length;
-    const lng = best.reduce((s, r) => s + r.lng, 0) / best.length;
-    return { lat, lng };
+  const formatDistance = (m: number) => {
+    if (m < 1000) return `~${Math.round(m)}m`;
+    return `~${(m / 1000).toFixed(1)}km`;
   };
 
   const verify = async () => {
@@ -136,6 +99,7 @@ const VerifyPresence = () => {
     setErrorMsg('');
 
     try {
+      // Refetch venue data for the actual verification (not cached probe)
       const { data: venue } = await supabase
         .from('venues')
         .select('lat, lng, name, radius_meters')
@@ -145,15 +109,15 @@ const VerifyPresence = () => {
       const proceed = () => {
         if (roomType === 'residential') {
           // Residential: details come AFTER verification
-          saveSessionState({ roomType: roomType!, venueId, step: 'profile' });
-          if (currentProfile?.nickname && currentProfile?.age_band) {
-            navigate(`/rooms/${roomType}/join?venue=${venueId}`);
-          } else {
-            navigate(`/rooms/${roomType}/join?venue=${venueId}`);
-          }
+          saveSessionState({ roomType: roomType!, venueId, step: 'profile', geofenceVerified: true });
+          navigate(`/rooms/${roomType}/join?venue=${venueId}`);
         } else {
           // Other rooms: details came before, go straight to live
-          saveSessionState({ roomType: roomType!, venueId, step: 'room', intent: passthroughIntent, vibe: passthroughVibe });
+          saveSessionState({
+            roomType: roomType!, venueId, step: 'room',
+            intent: passthroughIntent, vibe: passthroughVibe,
+            geofenceVerified: true,
+          });
           navigate(`/rooms/${roomType}/live?venue=${venueId}&intent=${encodeURIComponent(passthroughIntent)}&vibe=${encodeURIComponent(passthroughVibe)}`);
         }
       };
@@ -165,15 +129,15 @@ const VerifyPresence = () => {
         return;
       }
 
-      const result = await collectReadings();
+      const result = await collectAccurateReadings();
+
       if ('weak' in result) {
         setState('weak-signal');
         setErrorMsg('Location signal is weak. Try moving near a window or open area.');
         return;
       }
 
-      const venueRadius = (venue as any).radius_meters ? Number((venue as any).radius_meters) : null;
-      const radius = venueRadius ?? FALLBACK_RADIUS_BY_ROOM[roomType || ''] ?? 50;
+      const radius = venue.radius_meters || FALLBACK_RADIUS_BY_ROOM[roomType || ''] || 50;
       const dist = getDistanceMeters(result.lat, result.lng, Number(venue.lat), Number(venue.lng));
 
       if (dist <= radius) {
@@ -197,12 +161,7 @@ const VerifyPresence = () => {
     }
   };
 
-  useEffect(() => {
-    // No auth gate — presence is the only gate
-  }, []);
-
-  // Premium verification sequence — UI-only delay before invoking verify().
-  // Does NOT change geofence logic; verify() is still the actual gate.
+  // Premium verification sequence — UI-only delay before invoking verify()
   const handleVerifyPress = async () => {
     if (buttonPhase !== 'idle') return;
     setButtonPhase('loading');
@@ -213,10 +172,21 @@ const VerifyPresence = () => {
     verify();
   };
 
+  // Retry with exponential backoff for weak signals
   const retry = () => {
+    const nextRetry = retryCount + 1;
+    setRetryCount(nextRetry);
     setErrorMsg('');
     setButtonPhase('idle');
-    verify();
+
+    // Exponential backoff: 0s, 2s, 4s, 8s
+    const delay = Math.min(2 ** retryCount * 1000, 8000);
+    if (delay > 0) {
+      setState('verifying');
+      setTimeout(() => verify(), delay);
+    } else {
+      verify();
+    }
   };
 
   return (
@@ -345,7 +315,7 @@ const VerifyPresence = () => {
                 onClick={retry}
                 className="w-full rounded-2xl py-3.5 text-sm font-body font-medium bg-primary/90 text-primary-foreground hover:bg-primary transition-all duration-500"
               >
-                Try again
+                Try again{retryCount > 0 ? ` (attempt ${retryCount + 1})` : ''}
               </button>
               <button
                 onClick={() => navigate(`/rooms/${roomType}`)}

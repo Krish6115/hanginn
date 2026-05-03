@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
 import { MapPin } from 'lucide-react';
-import { Venue, PresenceState, getDistanceMeters } from '@/lib/types';
+import { Venue, PresenceState } from '@/lib/types';
+import { useGeolocation, distanceTo } from '@/hooks/useGeolocation';
 
 interface VenueCardProps {
   venue: Venue;
@@ -19,39 +19,18 @@ const formatDistance = (m: number) =>
 export function VenueCard({ venue, onClick }: VenueCardProps) {
   const presence = PRESENCE_CONFIG[venue.presence];
 
-  // UI-only proximity probe — does NOT gate entry. The verify page still owns the actual
-  // geofence logic. We just surface live distance + a pulsing CTA when inside the radius.
   const hasGeofence =
     typeof venue.lat === 'number' &&
     typeof venue.lng === 'number' &&
     typeof venue.radius === 'number';
 
-  const [probeDistance, setProbeDistance] = useState<number | null>(null);
+  // Use shared geolocation hook instead of per-card watchPosition.
+  // This eliminates 10x GPS listener spam when rendering a list of venue cards.
+  const geo = useGeolocation({ enabled: hasGeofence, throttleMs: 5000, maxAccuracy: 80 });
 
-  useEffect(() => {
-    if (!hasGeofence || !('geolocation' in navigator)) return;
-    let cancelled = false;
-    const watchId = navigator.geolocation.watchPosition(
-      (pos) => {
-        if (cancelled) return;
-        const d = getDistanceMeters(
-          pos.coords.latitude,
-          pos.coords.longitude,
-          venue.lat as number,
-          venue.lng as number,
-        );
-        setProbeDistance(d);
-      },
-      () => {
-        /* silent — probe is best-effort */
-      },
-      { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 },
-    );
-    return () => {
-      cancelled = true;
-      navigator.geolocation.clearWatch(watchId);
-    };
-  }, [hasGeofence, venue.lat, venue.lng]);
+  const probeDistance = hasGeofence
+    ? distanceTo(geo, venue.lat!, venue.lng!)
+    : null;
 
   const insideZone =
     hasGeofence &&
