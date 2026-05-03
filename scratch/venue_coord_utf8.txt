@@ -1,0 +1,10 @@
+﻿{
+    "value":  [
+                  {
+                      "name":  "Third Wave Coffee",
+                      "lat":  null,
+                      "lng":  null
+                  }
+              ],
+    "Count":  1
+}

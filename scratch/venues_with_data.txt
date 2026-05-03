@@ -1,0 +1,37 @@
+[
+  {
+    "name": "Phase 3B1",
+    "lat": 30.71238,
+    "lng": 76.7255
+  },
+  {
+    "name": "Phase 8",
+    "lat": 30.71,
+    "lng": 76.728
+  },
+  {
+    "name": "Sector 34",
+    "lat": 30.7264,
+    "lng": 76.7639
+  },
+  {
+    "name": "Kalsang Cafe",
+    "lat": 30.708241,
+    "lng": 76.7230825
+  },
+  {
+    "name": "Sector 42 Library",
+    "lat": 30.727051,
+    "lng": 76.7351011
+  },
+  {
+    "name": "SD College",
+    "lat": 30.7041398,
+    "lng": 76.7717277
+  },
+  {
+    "name": "Coofie Cafe",
+    "lat": 30.7076221,
+    "lng": 76.6841794
+  }
+]

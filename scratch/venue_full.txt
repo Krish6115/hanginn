@@ -1,0 +1,16 @@
+﻿{
+    "value":  [
+                  {
+                      "id":  "13af2c4b-9c3b-4e69-b3cd-8a692fba89ab",
+                      "name":  "Third Wave Coffee",
+                      "room_type":  "social",
+                      "address":  "42 MG Road",
+                      "image_url":  "https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=400\u0026h=300\u0026fit=crop",
+                      "created_at":  "2026-04-30T17:20:44.913831+00:00",
+                      "lat":  null,
+                      "lng":  null,
+                      "radius_meters":  50
+                  }
+              ],
+    "Count":  1
+}

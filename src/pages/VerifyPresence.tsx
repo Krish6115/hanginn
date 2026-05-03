@@ -122,10 +122,10 @@ const VerifyPresence = () => {
         }
       };
 
-      // No coordinates on venue → allow through
-      if (!venue?.lat || !venue?.lng) {
-        setState('success');
-        setTimeout(proceed, 1000);
+      // No coordinates on venue → fail closed (security hardened)
+      if (venue?.lat === null || venue?.lng === null || venue?.lat === undefined || venue?.lng === undefined) {
+        setState('failed');
+        setErrorMsg('Venue coordinates missing. Cannot verify presence.');
         return;
       }
 
